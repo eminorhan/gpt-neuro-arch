@@ -1,0 +1,56 @@
+# torchtitan Config.toml
+
+[job]
+dump_folder = "./outputs/rodent_1B_131k"
+description = "Rodent-1B-131k training"
+
+[profiling]
+enable_profiling = false
+save_traces_folder = "profile_trace"
+profile_freq = 10
+
+[metrics]
+log_freq = 10
+enable_tensorboard = false
+save_tb_folder = "tb"
+
+[model]
+name = "llama3"
+flavor = "1B"
+norm_type = "rmsnorm"  # layernorm / np_layernorm / rmsnorm / fused_rmsnorm
+
+[optimizer]
+name = "AdamW"
+lr = 3e-4
+
+[training]
+batch_size = 1
+seq_len = 131072
+vocab_size = 256
+warmup_steps = 200  # lr scheduler warm up
+max_norm = 1.0  # grad norm clipping
+steps = 1000  # number of training steps
+data_parallel_replicate_degree = 4
+data_parallel_shard_degree = 16
+tensor_parallel_degree = 8
+compile = true
+dataset = "rodent"
+
+[experimental]
+pipeline_parallel_degree = 1
+
+[checkpoint]
+enable_checkpoint = true
+folder = "checkpoint"
+interval_type = "steps"
+interval = 10
+model_weights_only = false
+export_dtype = "bfloat16"
+async_mode = "aync"  # ["disabled", "async", "async_with_pinned_mem"]
+
+[activation_checkpoint]
+mode = 'full'  # ['none', 'selective', 'full']
+selective_ac_option = 'op'  # 'int' = ac every positive int layer or 'op', ac based on ops policy
+
+[float8]
+enable_float8_linear = false
