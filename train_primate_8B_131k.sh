@@ -11,17 +11,12 @@
 #SBATCH --output=pri_%A_%a.out
 #SBATCH --array=0
 
-# set proxy server to enable communication with outside
-# export all_proxy=socks://proxy.ccs.ornl.gov:3128/
-# export ftp_proxy=ftp://proxy.ccs.ornl.gov:3128/
-# export http_proxy=http://proxy.ccs.ornl.gov:3128/
-# export https_proxy=http://proxy.ccs.ornl.gov:3128/
-# export no_proxy='localhost,127.0.0.0/8,*.ccs.ornl.gov'
-
+# activate venv
 source /lustre/gale/stf218/scratch/emin/myvenv/bin/activate
 
 # set misc env vars
 export LOGLEVEL=INFO
+export OMP_NUM_THREADS=1
 export NCCL_NET_GDR_LEVEL=3   # can improve performance, but remove this setting if you encounter a hang/crash.
 export NCCL_CROSS_NIC=1       # on large systems, this nccl setting has been found to improve performance
 export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"

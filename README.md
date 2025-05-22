@@ -1,16 +1,12 @@
-### GPT-neuro: yet another foundation model for neural data
+### Large-scale distributed training of autoregressive generative models on *the Neural Pile*
 
-This is a copy of `gpt-neuro` on Arch, an HPE Cray EX254n system with 168 GH200 superchips.
-
----
-
-`rodent-8B-131k`: pretrained on rodent data
+This is a copy of `gpt-neuro` on Arch, an HPE Cray EX254n system with 168 GH200 superchips. Currently re-training the following models on this system:
 
 `primate-8B-131k`: pretrained on primate data
 
-`rodent-primate-8B-131k`: pretrained on rodent data -> finetuned on primate data
+`lang-primate-8B-131k`: pretrained on language -> finetuned on primate data
 
-`text-primate-8B-131k`: pretrained on language -> finetuned on primate data
+These models are trained on 36 nodes (144 GPUs) with FSDP2 only. The larger GPU memory on GH200 makes it feasible to train the models with 131072 token context length without tensor parallelism (note that this is not possible on MI250X). The global batch size is 18.9M tokens per update (144 x 131072).
 
 ---
 
