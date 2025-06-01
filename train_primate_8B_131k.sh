@@ -2,7 +2,7 @@
 
 #SBATCH --account=stf218-arch
 #SBATCH --partition=batch
-#SBATCH --nodes=36
+#SBATCH --nodes=35
 #SBATCH --cpus-per-task=288
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4

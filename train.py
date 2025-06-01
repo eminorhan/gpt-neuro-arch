@@ -15,7 +15,7 @@ from torch.distributed.elastic.multiprocessing.errors import record
 from torchtitan import utils
 from torchtitan.checkpoint import CheckpointManager, TrainState
 from torchtitan.config_manager import JobConfig
-from torchtitan.datasets import build_hf_data_loader
+from torchtitan.datasets import build_data_loader
 from torchtitan.float8 import Float8Handler
 from torchtitan.logging import init_logger, logger
 from torchtitan.metrics import build_gpu_memory_monitor, build_metric_logger
@@ -89,7 +89,7 @@ def main(job_config: JobConfig):
     model_name = job_config.model.name
 
     # build dataloader
-    data_loader = build_hf_data_loader(
+    data_loader = build_data_loader(
         job_config.training.dataset,
         job_config.training.dataset_path,
         job_config.training.batch_size,

@@ -395,6 +395,9 @@ class Transformer(nn.Module):
                 a=-cutoff_factor * final_out_std,
                 b=cutoff_factor * final_out_std,
             )
+            if self.output.bias is not None:
+                nn.init.zeros_(self.output.bias)
+
 
     def _precompute_freqs_cis(self) -> torch.Tensor:
         return precompute_freqs_cis(
