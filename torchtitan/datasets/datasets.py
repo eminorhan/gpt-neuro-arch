@@ -139,20 +139,20 @@ class SyntheticDataset(IterableDataset, Stateful):
         self.infinite = infinite
         self.rank = rank
 
-        # Seed the RNG for this process to ensure different data per rank.
-        # Adding rank to a random seed ensures that each process starts with a
-        # unique, non-overlapping sequence of random numbers.
+        # seed the rng for this process to ensure different data per rank
+        # adding rank to a random seed ensures that each process starts with a
+        # unique, non-overlapping sequence of random numbers
         np.random.seed(rank + np.random.randint(0, 2**32 - 1))
 
-        # Variables for checkpointing
+        # variables for checkpointing
         self._sample_idx = 0
         self._all_tokens: List[int] = []
         self._rng_state = np.random.get_state()
 
     def _generate_sample(self) -> np.ndarray:
         """Generates a single synthetic data sample."""
-        rows = np.random.randint(245, 255)
-        cols = np.random.randint(495, 505)
+        rows = np.random.randint(210, 290)
+        cols = np.random.randint(460, 540)
         sample = np.zeros((rows, cols))
         num_active_rows = int(rows * 0.1)
         random_indices = np.random.choice(rows, size=num_active_rows, replace=False)
@@ -160,7 +160,7 @@ class SyntheticDataset(IterableDataset, Stateful):
         return sample
 
     def __iter__(self):
-        # Restore the RNG state at the beginning of iteration to ensure
+        # restore the RNG state at the beginning of iteration to ensure
         # that resuming from a checkpoint continues the same random sequence.
         np.random.set_state(self._rng_state)
 
@@ -170,12 +170,12 @@ class SyntheticDataset(IterableDataset, Stateful):
             sample = self._generate_sample()
             self._sample_idx += 1
 
-            # Process the sample similarly to HuggingFaceDataset
+            # process the sample similarly to HuggingFaceDataset
             sample = np.concatenate((np.full((1, sample.shape[1]), self.vocab_size - 1), sample), axis=0)
             sample = sample.T.flatten().tolist()
             self._all_tokens.extend(sample)
 
-            # Yield sequences from the buffer
+            # yield sequences from the buffer
             while len(self._all_tokens) >= max_buffer_token_len:
                 x = torch.LongTensor(self._all_tokens[:max_buffer_token_len])
                 self._all_tokens = self._all_tokens[max_buffer_token_len:]
@@ -183,14 +183,14 @@ class SyntheticDataset(IterableDataset, Stateful):
                 label = x[1:]
                 yield input_seq, label
 
-            # For synthetic data, 'infinite' is the natural mode.
-            # A hard stop is included for consistency if infinite=False.
+            # for synthetic data, 'infinite' is the natural mode
+            # a hard stop is included for consistency if infinite=False
             if not self.infinite and self._sample_idx > 100000:
                  logger.warning(f"SyntheticDataset has reached its arbitrary limit of {self._sample_idx} samples.")
                  break
 
     def state_dict(self) -> Dict[str, Any]:
-        # Capture the current RNG state for checkpointing.
+        # capture the current RNG state for checkpointing.
         self._rng_state = np.random.get_state()
         return {
             "token_buffer": self._all_tokens,
@@ -202,7 +202,7 @@ class SyntheticDataset(IterableDataset, Stateful):
         self._sample_idx = state_dict["sample_idx"]
         self._all_tokens = state_dict["token_buffer"]
         self._rng_state = state_dict["rng_state"]
-        # The RNG state will be restored at the start of the next __iter__ call.
+        # rng state will be restored at the start of the next __iter__ call.
 
 
 class DPAwareDataLoader(StatefulDataLoader, Stateful):
@@ -216,11 +216,11 @@ class DPAwareDataLoader(StatefulDataLoader, Stateful):
         self._rank_id = f"dp_rank_{dp_rank}"
 
     def state_dict(self) -> Dict[str, Any]:
-        # Store state only for dp rank to avoid replicating the same state across other dimensions
+        # store state only for dp rank to avoid replicating the same state across other dimensions
         return {self._rank_id: pickle.dumps(super().state_dict())}
 
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
-        # State being empty is valid
+        # state being empty is valid
         if not state_dict:
             return
 
