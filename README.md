@@ -23,3 +23,24 @@ To re-consolidate the `dcp` checkpoint into a single `.pth` checkpoint file and 
 ```bash
 python dcp_to_llama.py --input_dir INPUT_DIR --output_dir OUTPUT_DIR --hf_repo_name HF_REPO_NAME --push_to_hub
 ```
+
+### Requirements
+
+A successful reproduction requires the following steps.
+
+Create a python virtual environment and activate it:
+```bash
+python -m venv myvenv
+source myvenv/bin/activate
+``` 
+
+Install PyTorch with CUDA 12.6 support (Arch doesn't support later CUDA versions at the moment):
+```bash
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+```
+
+Install the following packages:
+```bash
+pip install datasets torchdata tomli tensorboard blobfile tabulate ninja
+```
+and then you can clone this repo and run the training/evaluation/generation scripts.

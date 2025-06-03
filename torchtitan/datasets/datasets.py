@@ -151,8 +151,8 @@ class SyntheticDataset(IterableDataset, Stateful):
 
     def _generate_sample(self) -> np.ndarray:
         """Generates a single synthetic data sample."""
-        rows = np.random.randint(210, 290)
-        cols = np.random.randint(460, 540)
+        rows = np.random.randint(245, 255)
+        cols = np.random.randint(495, 505)
         sample = np.zeros((rows, cols))
         num_active_rows = int(rows * 0.1)
         random_indices = np.random.choice(rows, size=num_active_rows, replace=False)
