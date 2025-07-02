@@ -2,14 +2,15 @@
 
 #SBATCH --account=stf218-arch
 #SBATCH --partition=batch
-#SBATCH --nodes=12
+#SBATCH --nodes=21
+#SBATCH --exclude=arch[01-18]
 #SBATCH --cpus-per-task=288
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --time=6:00:00
 #SBATCH --job-name=train_synthetic_primate_8b_131k
 #SBATCH --output=train_synthetic_primate_8b_131k_%A_%a.out
-#SBATCH --array=0
+#SBATCH --array=0-9
 
 # activate venv
 source /lustre/gale/stf218/scratch/emin/myvenv/bin/activate
