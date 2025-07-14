@@ -2,19 +2,18 @@
 
 #SBATCH --account=stf218-arch
 #SBATCH --partition=batch
-#SBATCH --nodes=21
-##SBATCH --exclude=arch[09-42]
+#SBATCH --nodes=36
 #SBATCH --cpus-per-task=288
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --time=6:00:00
 #SBATCH --job-name=train_primate_8b_131k
 #SBATCH --output=train_primate_8b_131k_%A_%a.out
-#SBATCH --array=0
+#SBATCH --array=0-99
 
 # activate venv
 # source /lustre/gale/stf218/scratch/emin/myvenv/bin/activate
-eval "$(/lustre/gale/stf218/scratch/emin/container/miniconda3/bin/conda shell.bash hook)"
+# eval "$(/lustre/gale/stf218/scratch/emin/container/miniconda3/bin/conda shell.bash hook)"
 
 # set misc env vars
 export LOGLEVEL=INFO

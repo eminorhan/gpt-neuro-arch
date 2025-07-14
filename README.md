@@ -12,6 +12,14 @@ This is a copy of the [`gpt-neuro`](https://github.com/eminorhan/gpt-neuro) repo
 
 The training configurations for these models can be found in the [train_configs](train_configs) folder. These models are all trained with FSDP2 only. The larger GPU memory on GH200 makes it feasible to train the models with 131072 token context length without tensor parallelism (note that this is not possible on MI250X).
 
+### Training data
+
+The training code in this repository trains the models on the *The Neural Pile* dataset. *The Neural Pile* is hosted on two public Hugging Face dataset repositories:
+* [`eminorhan/neural-pile-primate`](https://huggingface.co/datasets/eminorhan/neural-pile-primate) hosts the primate data.
+* [`eminorhan/neural-pile-rodent`](https://huggingface.co/datasets/eminorhan/neural-pile-rodent) hosts the rodent data.
+
+You can download the data, *e.g.* using the `load_dataset` function in the Hugging Face `datasets` repository. You will need about 34 GB of free disk space in order to cache the primate data on disk and about 477 GB for the rodent data. The training code in this repository assumes that the dataset is already cached on local disk.
+
 ### Checkpoint conversions
 
 To generate an initial checkpoint from the pretrained `llama-3.1-8B` model without copying the input and output layers (to take into account the different vocab size in our models):
@@ -25,22 +33,29 @@ python dcp_to_llama.py --input_dir INPUT_DIR --output_dir OUTPUT_DIR --hf_repo_n
 ```
 
 ### Requirements
-
 A successful reproduction requires the following steps.
 
-Create a python virtual environment and activate it:
+* Create a python virtual environment and activate it:
 ```bash
 python -m venv myvenv
 source myvenv/bin/activate
 ``` 
 
-Install PyTorch with CUDA 12.6 support (Arch doesn't support later CUDA versions at the moment):
+* Install PyTorch stable built with CUDA 12.8 (my torch version is `2.7.1+cu128`):
 ```bash
-pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu126
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 ```
 
-Install the following packages:
+* Install the following packages:
 ```bash
-pip install datasets torchdata tomli tensorboard blobfile tabulate ninja
+pip install torchdata tomli tensorboard blobfile tabulate ninja
 ```
-and then you can clone this repo and run the training/evaluation/generation scripts.
+
+* Install FlashAttention-3 for the Hopper architecture as described [here](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#flashattention-3-beta-release), basically:
+```bash
+git clone https://github.com/Dao-AILab/flash-attention.git
+cd flash-attention/hopper
+python setup.py install
+```
+
+* Then you can clone this repo and run the training and evaluation scripts here.

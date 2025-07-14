@@ -197,15 +197,6 @@ class Attention(nn.Module):
         keys = repeat_kv(xk, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
         values = repeat_kv(xv, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
 
-        # # sdpa
-        # xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
-        # xk = keys.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
-        # xv = values.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
-
-        # output = F.scaled_dot_product_attention(xq, xk, xv, is_causal=True)
-        # output = output.transpose(1, 2).contiguous()  # (bs, seqlen, n_local_heads, head_dim)
-        # output = output.view(bs, seqlen, -1)
-
         # fa-3
         output, _ = flash_attn_interface.flash_attn_func(xq, xk, xv, causal=True)
         output = output.contiguous().view(bs, seqlen, -1)
