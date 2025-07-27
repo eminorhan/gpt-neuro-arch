@@ -58,4 +58,14 @@ cd flash-attention/hopper
 python setup.py install
 ```
 
+* Install the `aws-ofi-nccl` plugin, which will enable `nccl` to use `libfabric` (you need to change the paths below if you're not installing this on Arch):
+```bash
+wget https://github.com/aws/aws-ofi-nccl/releases/download/v1.14.0/aws-ofi-nccl-1.14.0.tar.gz
+tar -xzvf aws-ofi-nccl-1.14.0.tar.gz
+cd aws-ofi-nccl-1.14.0
+CC=gcc CXX=g++ ac_cv_header_limits_h=yes ./configure --with-libfabric=/opt/cray/libfabric/1.22.0 --with-cuda=/opt/nvidia/hpc_sdk/Linux_aarch64/25.3/cuda/12.8 --enable-trace --prefix=/lustre/gale/stf218/scratch/emin/aws-ofi-nccl-1.14.0 --disable-tests
+make
+make install
+```
+
 * Then you can clone this repo and run the training and evaluation scripts here.
