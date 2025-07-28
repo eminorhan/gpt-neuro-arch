@@ -12,8 +12,7 @@
 #SBATCH --array=0-9
 
 # activate venv
-# source /lustre/gale/stf218/scratch/emin/myvenv/bin/activate
-eval "$(/lustre/gale/stf218/scratch/emin/container/miniconda3/bin/conda shell.bash hook)"
+source /lustre/gale/stf218/scratch/emin/ncclvenv/bin/activate
 
 # set misc env vars
 export LD_LIBRARY_PATH=/lustre/gale/stf218/scratch/emin/aws-ofi-nccl-1.14.0/lib:$LD_LIBRARY_PATH  # enable aws-ofi-nccl

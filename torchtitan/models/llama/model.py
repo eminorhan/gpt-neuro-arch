@@ -198,7 +198,7 @@ class Attention(nn.Module):
         values = repeat_kv(xv, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
 
         # fa-3
-        output, _ = flash_attn_interface.flash_attn_func(xq, keys, values, causal=True)
+        output = flash_attn_interface.flash_attn_func(xq, keys, values, causal=True)
         output = output.contiguous().view(bs, seqlen, -1)
 
         return self.wo(output)
