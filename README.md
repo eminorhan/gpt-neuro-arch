@@ -48,7 +48,7 @@ pip install --pre torch torchvision torchaudio --index-url https://download.pyto
 
 * Install the following packages:
 ```bash
-pip install torchdata tomli tensorboard blobfile tabulate ninja
+pip install datasets torchdata tomli tensorboard blobfile tabulate ninja
 ```
 
 * Install FlashAttention-3 for the Hopper architecture as described [here](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#flashattention-3-beta-release), basically:
