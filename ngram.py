@@ -149,7 +149,7 @@ if __name__ == '__main__':
     SEQUENCE_KEY = "spike_counts" # column name in the dataset that contains the data.
 
     # n-gram info
-    N_VALUE = 1
+    N_VALUE = 9
     VOCAB_SIZE = 256
     
     # load the dataset
@@ -162,6 +162,7 @@ if __name__ == '__main__':
     ngram_model = NGramModel(n=N_VALUE, vocab_size=VOCAB_SIZE)
     
     # train the model (NOTE: for large datasets, you might want to take a small subset for faster prototyping/debugging: e.g., ds_train.take(100))
+    ds_train = ds_train.take(2000)
     ngram_model.train(ds_train, sequence_key=SEQUENCE_KEY)
     
     # estimate the cross-entropy on test split
