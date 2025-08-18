@@ -8,14 +8,15 @@ from torch.utils.data import IterableDataset
 from torchdata.stateful_dataloader import StatefulDataLoader
 from torchtitan.logging import logger
 
-from datasets import Dataset, load_dataset
+from datasets import Dataset, load_dataset, concatenate_datasets
 from datasets.distributed import split_dataset_by_node
 
 # map from dataset name to a local directory, or a dataset repository on the HF hub
 _supported_datasets = {
     "rodent": "eminorhan/neural-pile-rodent",
     "primate": "eminorhan/neural-pile-primate",
-    "willett": "eminorhan/willett"
+    "willett": "eminorhan/willett",
+    "willett-churchland": ["eminorhan/willett", "eminorhan/churchland"]
 }
 
 class HuggingFaceDataset(IterableDataset, Stateful):
@@ -52,7 +53,11 @@ class HuggingFaceDataset(IterableDataset, Stateful):
         if not dataset_path:
             dataset_path = _supported_datasets[dataset_name]
         logger.info(f"Preparing {dataset_name} dataset from {dataset_path}")
-        ds = load_dataset(dataset_path, split="train")
+
+        if isinstance(dataset_path, list):
+            ds = concatenate_datasets([load_dataset(repo_name, split="train") for repo_name in dataset_path])
+        else:
+            ds = load_dataset(dataset_path, split="train")
 
         # NOTE: datasets are pre-shuffled
         self._data = split_dataset_by_node(ds, rank, world_size)
