@@ -225,7 +225,7 @@ def main(job_config: JobConfig):
 
             input_ids = input_ids.cuda()
             labels = labels.cuda()
-            pos = pos.cuda()
+            pos = pos.squeeze().cuda()
             optimizers.zero_grad()
 
             if parallel_dims.pp_enabled:

@@ -26,7 +26,7 @@ def init_t_xy(end_x: int, end_y: int):
     return t_x, t_y
 
 
-def compute_axial_cis(dim: int, end_x: int, end_y: int, theta: float = 1000.0):
+def compute_axial_cis(dim: int, end_x: int, end_y: int, theta: float = 3000.0):
     freqs_x = 1.0 / (theta ** (torch.arange(0, dim, 4)[: (dim // 4)].float() / dim))
     freqs_y = 1.0 / (theta ** (torch.arange(0, dim, 4)[: (dim // 4)].float() / dim))
 
@@ -86,8 +86,8 @@ class HuggingFaceDataset(IterableDataset, Stateful):
 
         # variables for checkpointing
         self._sample_idx = 0
+        self._rope_buffer = None  # will be set later
         self._token_buffer: List[int] = []
-        self._rope_buffer: List[Any] = []
 
     def __iter__(self):
         max_buffer_token_len = 1 + self.seq_len
@@ -98,19 +98,22 @@ class HuggingFaceDataset(IterableDataset, Stateful):
                 sample = np.array(sample['spike_counts'])
                 sample = np.concatenate((np.full((1, sample.shape[1]), self.vocab_size-1), sample), axis=0)
                 # 2d rope    
-                pos_embed = compute_axial_cis(4096, sample.shape[0], sample.shape[1])  # TODO: Do not hard set the first argument like this. TODO: Pass rope theta explicitly as argument
+                pos_embed = compute_axial_cis(128, sample.shape[0], sample.shape[1])  # TODO: Do not hard set the first argument like this (dim/n_heads). TODO: Pass rope theta explicitly as argument
 
                 # flatten
                 sample = sample.T.flatten().tolist()
-                pos_embed = pos_embed.T.flatten().tolist()
 
                 self._token_buffer.extend(sample)
-                self._rope_buffer.extend(pos_embed)
+                # set _rope_buffer
+                if self._sample_idx == 0:
+                    self._rope_buffer = pos_embed
+                else:
+                    self._rope_buffer = torch.cat([self._rope_buffer, pos_embed], dim=0)
                 self._sample_idx += 1
 
                 while len(self._token_buffer) >= max_buffer_token_len:
                     x = torch.LongTensor(self._token_buffer[:max_buffer_token_len])
-                    p = torch.LongTensor(self._rope_buffer[:max_buffer_token_len])
+                    p = self._rope_buffer[:max_buffer_token_len]
                     # update tokens to the remaining tokens
                     self._token_buffer = self._token_buffer[max_buffer_token_len:]
                     self._rope_buffer = self._rope_buffer[max_buffer_token_len:]
