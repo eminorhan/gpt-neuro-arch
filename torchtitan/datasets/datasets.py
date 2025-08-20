@@ -19,6 +19,25 @@ _supported_datasets = {
     "willett-churchland": ["eminorhan/willett", "eminorhan/churchland"]
 }
 
+def init_t_xy(end_x: int, end_y: int):
+    t = torch.arange(end_x * end_y, dtype=torch.float32)
+    t_x = (t % end_x).float()
+    t_y = torch.div(t, end_x, rounding_mode='floor').float()
+    return t_x, t_y
+
+
+def compute_axial_cis(dim: int, end_x: int, end_y: int, theta: float = 1000.0):
+    freqs_x = 1.0 / (theta ** (torch.arange(0, dim, 4)[: (dim // 4)].float() / dim))
+    freqs_y = 1.0 / (theta ** (torch.arange(0, dim, 4)[: (dim // 4)].float() / dim))
+
+    t_x, t_y = init_t_xy(end_x, end_y)
+    freqs_x = torch.outer(t_x, freqs_x)
+    freqs_y = torch.outer(t_y, freqs_y)
+    freqs_cis_x = torch.polar(torch.ones_like(freqs_x), freqs_x)
+    freqs_cis_y = torch.polar(torch.ones_like(freqs_y), freqs_y)
+    return torch.cat([freqs_cis_x, freqs_cis_y], dim=-1)
+
+
 class HuggingFaceDataset(IterableDataset, Stateful):
     """PyTorch Representation of the HuggingFace Dataset.
 
@@ -31,7 +50,6 @@ class HuggingFaceDataset(IterableDataset, Stateful):
         world_size (int): number of data parallel processes participating in training
         rank (int): rank of the current data parallel process
         infinite (bool): whether to loop infinitely over the dataset
-
     """
     def __init__(
         self,
@@ -69,25 +87,37 @@ class HuggingFaceDataset(IterableDataset, Stateful):
         # variables for checkpointing
         self._sample_idx = 0
         self._token_buffer: List[int] = []
+        self._rope_buffer: List[Any] = []
 
     def __iter__(self):
         max_buffer_token_len = 1 + self.seq_len
 
         while True:
             for sample in self._get_data_iter():
+                # spike count tokens
                 sample = np.array(sample['spike_counts'])
                 sample = np.concatenate((np.full((1, sample.shape[1]), self.vocab_size-1), sample), axis=0)
+                # 2d rope    
+                pos_embed = compute_axial_cis(4096, sample.shape[0], sample.shape[1])  # TODO: Do not hard set the first argument like this. TODO: Pass rope theta explicitly as argument
+
+                # flatten
                 sample = sample.T.flatten().tolist()
+                pos_embed = pos_embed.T.flatten().tolist()
+
                 self._token_buffer.extend(sample)
+                self._rope_buffer.extend(pos_embed)
                 self._sample_idx += 1
 
                 while len(self._token_buffer) >= max_buffer_token_len:
                     x = torch.LongTensor(self._token_buffer[:max_buffer_token_len])
+                    p = torch.LongTensor(self._rope_buffer[:max_buffer_token_len])
                     # update tokens to the remaining tokens
                     self._token_buffer = self._token_buffer[max_buffer_token_len:]
+                    self._rope_buffer = self._rope_buffer[max_buffer_token_len:]
                     input = x[:-1]
                     label = x[1:]
-                    yield input, label
+                    pos = p[:-1]
+                    yield input, label, pos
 
             if not self.infinite:
                 logger.warning(f"Dataset {self.dataset_name} has run out of data")
@@ -110,6 +140,7 @@ class HuggingFaceDataset(IterableDataset, Stateful):
 
     def load_state_dict(self, state_dict):
         self._token_buffer = state_dict["token_buffer"]
+        self._rope_buffer = state_dict["rope_buffer"]
 
         if isinstance(self._data, Dataset):
             self._sample_idx = state_dict["sample_idx"]
@@ -118,7 +149,7 @@ class HuggingFaceDataset(IterableDataset, Stateful):
             self._data.load_state_dict(state_dict["data"])
 
     def state_dict(self):
-        _state_dict = {"token_buffer": self._token_buffer}
+        _state_dict = {"token_buffer": self._token_buffer, "rope_buffer": self._rope_buffer}
 
         if isinstance(self._data, Dataset):
             _state_dict["sample_idx"] = self._sample_idx

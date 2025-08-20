@@ -219,12 +219,13 @@ def main(job_config: JobConfig):
             # get batch
             data_load_start = time.perf_counter()
             batch = next(data_iterator)
-            input_ids, labels = batch
+            input_ids, labels, pos = batch
             ntokens_since_last_log += labels.numel()
             data_loading_times.append(time.perf_counter() - data_load_start)
 
             input_ids = input_ids.cuda()
             labels = labels.cuda()
+            pos = pos.cuda()
             optimizers.zero_grad()
 
             if parallel_dims.pp_enabled:
@@ -245,7 +246,7 @@ def main(job_config: JobConfig):
             else:
                 # Non-PP forward / backward
                 with train_context():
-                    pred = model(input_ids)  # pred.shape=(bs, seq_len, vocab_size)
+                    pred = model(input_ids, pos)  # pred.shape=(bs, seq_len, vocab_size)
                     loss = loss_fn(pred, labels)
                     # need to free before bwd to avoid peaking memory
                     del pred

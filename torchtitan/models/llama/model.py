@@ -35,48 +35,6 @@ class ModelArgs:
     norm_type: str = "rmsnorm"
 
 
-def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> torch.Tensor:
-    """
-    Precompute the frequency tensor for complex exponentials (cis) with given dimensions.
-
-    This function calculates a frequency tensor with complex exponentials using the given dimension 'dim'
-    and the end index 'end'. The 'theta' parameter scales the frequencies.
-    The returned tensor contains complex values in complex64 data type.
-
-    Args:
-        dim (int): Dimension of the frequency tensor.
-        end (int): End index for precomputing frequencies.
-        theta (float, optional): Scaling factor for frequency computation. Defaults to 10000.0.
-
-    Returns:
-        torch.Tensor: Precomputed frequency tensor with complex exponentials.
-    """
-    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
-    t = torch.arange(end, device=freqs.device)
-    freqs = torch.outer(t, freqs).float()
-    freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
-    return freqs_cis
-
-
-def init_t_xy(end_x: int, end_y: int):
-    t = torch.arange(end_x * end_y, dtype=torch.float32)
-    t_x = (t % end_x).float()
-    t_y = torch.div(t, end_x, rounding_mode='floor').float()
-    return t_x, t_y
-
-
-def compute_axial_cis(dim: int, end_x: int, end_y: int, theta: float = 1000.0):
-    freqs_x = 1.0 / (theta ** (torch.arange(0, dim, 4)[: (dim // 4)].float() / dim))
-    freqs_y = 1.0 / (theta ** (torch.arange(0, dim, 4)[: (dim // 4)].float() / dim))
-
-    t_x, t_y = init_t_xy(end_x, end_y)
-    freqs_x = torch.outer(t_x, freqs_x)
-    freqs_y = torch.outer(t_y, freqs_y)
-    freqs_cis_x = torch.polar(torch.ones_like(freqs_x), freqs_x)
-    freqs_cis_y = torch.polar(torch.ones_like(freqs_y), freqs_y)
-    return torch.cat([freqs_cis_x, freqs_cis_y], dim=-1)
-
-
 def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     """
     Reshape frequency tensor for broadcasting it with another tensor.
@@ -339,7 +297,6 @@ class Transformer(nn.Module):
         layers (torch.nn.ModuleList): List of Transformer blocks.
         norm (RMSNorm): Layer normalization for the model output.
         output (ColumnParallelLinear): Linear layer for final output.
-        freqs_cis (torch.Tensor): Precomputed cosine and sine frequencies.
 
     """
 
@@ -350,15 +307,6 @@ class Transformer(nn.Module):
         self.n_layers = model_args.n_layers
 
         self.tok_embeddings = nn.Embedding(model_args.vocab_size, model_args.dim)
-
-        # TODO persistent should be set to false, since this buffer can be recomputed.
-        # however, we set it to true for 2 reasons.  (1) due to pytorch/pytorch#123411,
-        # compile or pipeline-tracer will not correctly handle non-persistent buffers,
-        # so we need to fix that.  (2) if we initialize pipeline-parallel models from
-        # a seed checkpoint rather than calling init_weights, we need freqs_cis to be
-        # initialized by the checkpoint, or we need to add a separate initializer for
-        # just the non-persistent buffers that is called after loading checkpoints.
-        self.register_buffer("freqs_cis", self._precompute_freqs_cis(), persistent=False)
 
         self.layers = torch.nn.ModuleDict()
         for layer_id in range(model_args.n_layers):
@@ -380,8 +328,6 @@ class Transformer(nn.Module):
         ``init_weights``. We only call it in the constructor of this
         ``Transformer`` root module to avoid reinitializing tensors.
         """
-        with torch.device(self.freqs_cis.device):
-            self.freqs_cis = self._precompute_freqs_cis()
         if self.tok_embeddings is not None:
             nn.init.normal_(self.tok_embeddings.weight)
         for layer in self.layers.values():
@@ -403,16 +349,7 @@ class Transformer(nn.Module):
                 nn.init.zeros_(self.output.bias)
 
 
-    def _precompute_freqs_cis(self) -> torch.Tensor:
-        return precompute_freqs_cis(
-            self.model_args.dim // self.model_args.n_heads,
-            # Need to compute until at least the max token limit for generation
-            # (use 2x max sequence length to be safe)
-            self.model_args.max_seq_len * 2,
-            self.model_args.rope_theta,
-        )
-
-    def forward(self, tokens: torch.Tensor):
+    def forward(self, tokens: torch.Tensor, freqs_cis: torch.Tensor):
         """
         Perform a forward pass through the Transformer model.
         Args:
@@ -424,7 +361,7 @@ class Transformer(nn.Module):
         # passthrough for nonexistent layers, allows easy configuration of pipeline parallel stages
         h = self.tok_embeddings(tokens) if self.tok_embeddings else tokens
         for layer in self.layers.values():
-            h = layer(h, self.freqs_cis)
+            h = layer(h, freqs_cis)
 
         h = self.norm(h) if self.norm else h
         output = self.output(h).float() if self.output else h
