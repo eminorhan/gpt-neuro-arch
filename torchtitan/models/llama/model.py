@@ -58,6 +58,25 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> torch.Te
     return freqs_cis
 
 
+def init_t_xy(end_x: int, end_y: int):
+    t = torch.arange(end_x * end_y, dtype=torch.float32)
+    t_x = (t % end_x).float()
+    t_y = torch.div(t, end_x, rounding_mode='floor').float()
+    return t_x, t_y
+
+
+def compute_axial_cis(dim: int, end_x: int, end_y: int, theta: float = 1000.0):
+    freqs_x = 1.0 / (theta ** (torch.arange(0, dim, 4)[: (dim // 4)].float() / dim))
+    freqs_y = 1.0 / (theta ** (torch.arange(0, dim, 4)[: (dim // 4)].float() / dim))
+
+    t_x, t_y = init_t_xy(end_x, end_y)
+    freqs_x = torch.outer(t_x, freqs_x)
+    freqs_y = torch.outer(t_y, freqs_y)
+    freqs_cis_x = torch.polar(torch.ones_like(freqs_x), freqs_x)
+    freqs_cis_y = torch.polar(torch.ones_like(freqs_y), freqs_y)
+    return torch.cat([freqs_cis_x, freqs_cis_y], dim=-1)
+
+
 def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     """
     Reshape frequency tensor for broadcasting it with another tensor.
@@ -84,11 +103,7 @@ def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor) -> torch.Ten
     return freqs_cis.view(*shape)
 
 
-def apply_rotary_emb(
-    xq: torch.Tensor,
-    xk: torch.Tensor,
-    freqs_cis: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+def apply_rotary_emb(xq: torch.Tensor, xk: torch.Tensor, freqs_cis: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Apply rotary embeddings to input tensors using the given frequency tensor.
 
@@ -165,11 +180,7 @@ class Attention(nn.Module):
             nn.init.trunc_normal_(linear.weight, mean=0.0, std=0.02)
         nn.init.trunc_normal_(self.wo.weight, mean=0.0, std=init_std)
 
-    def forward(
-        self,
-        x: torch.Tensor,
-        freqs_cis: torch.Tensor,
-    ):
+    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor):
         """
         Forward pass of the attention module.
 
@@ -290,11 +301,7 @@ class TransformerBlock(nn.Module):
         else:
             self.weight_init_std = 0.02 / (2 * self.num_layers) ** 0.5
 
-    def forward(
-        self,
-        x: torch.Tensor,
-        freqs_cis: torch.Tensor,
-    ):
+    def forward(self, x: torch.Tensor, freqs_cis: torch.Tensor):
         """
         Perform a forward pass through the TransformerBlock.
 
