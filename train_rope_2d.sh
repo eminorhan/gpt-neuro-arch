@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=288
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
-#SBATCH --time=1:00:00
+#SBATCH --time=6:00:00
 #SBATCH --job-name=train_rope_2d
 #SBATCH --output=train_rope_2d_%A_%a.out
 #SBATCH --array=0
