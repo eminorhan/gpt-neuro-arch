@@ -172,8 +172,10 @@ class HuggingFaceDataset(IterableDataset, Stateful):
 
         if self._rope_buffer is not None:
             # Shard the large rope buffer
+            logger.info(f"RoPE buffer numel: {self._rope_buffer.numel()}")
             num_shards = (self._rope_buffer.numel() + shard_size_elements - 1) // shard_size_elements
             shards = torch.chunk(self._rope_buffer, chunks=num_shards, dim=0)
+            logger.info(f"RoPE num_shards: {num_shards}")
             for i, shard in enumerate(shards):
                 _state_dict[f"rope_buffer_shard_{i}"] = shard.clone() # Use clone for safety
             _state_dict["rope_buffer_num_shards"] = num_shards
