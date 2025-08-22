@@ -143,7 +143,17 @@ class HuggingFaceDataset(IterableDataset, Stateful):
 
     def load_state_dict(self, state_dict):
         self._token_buffer = state_dict["token_buffer"]
-        self._rope_buffer = state_dict["rope_buffer"]
+        
+        # Reassemble the rope buffer from shards
+        num_shards = state_dict.get("rope_buffer_num_shards", 0)
+        if num_shards > 0:
+            shards = []
+            for i in range(num_shards):
+                shards.append(state_dict[f"rope_buffer_shard_{i}"])
+            self._rope_buffer = torch.cat(shards, dim=0)
+        else:
+            # Handle the case where the buffer was None or checkpoint is from old code
+            self._rope_buffer = state_dict.get("rope_buffer") 
 
         if isinstance(self._data, Dataset):
             self._sample_idx = state_dict["sample_idx"]
@@ -151,18 +161,31 @@ class HuggingFaceDataset(IterableDataset, Stateful):
             assert "data" in state_dict
             self._data.load_state_dict(state_dict["data"])
 
-    def state_dict(self):
-        _state_dict = {"token_buffer": self._token_buffer, "rope_buffer": self._rope_buffer}
+    def state_dict(self, shard_size_gb: float = 1.0):
+        """state_dict with sharded RoPE buffer to circumvent the 4GB serialization limit in dcp.save"""
+        # Calculate shard size in number of elements based on GB
+        # A complex float (complex64) is 8 bytes.
+        element_size_bytes = 8
+        shard_size_elements = int((shard_size_gb * 1024**3) / element_size_bytes)
+
+        _state_dict = {"token_buffer": self._token_buffer}
+
+        if self._rope_buffer is not None:
+            # Shard the large rope buffer
+            num_shards = (self._rope_buffer.numel() + shard_size_elements - 1) // shard_size_elements
+            shards = torch.chunk(self._rope_buffer, chunks=num_shards, dim=0)
+            for i, shard in enumerate(shards):
+                _state_dict[f"rope_buffer_shard_{i}"] = shard.clone() # Use clone for safety
+            _state_dict["rope_buffer_num_shards"] = num_shards
+        else:
+            _state_dict["rope_buffer_num_shards"] = 0
 
         if isinstance(self._data, Dataset):
             _state_dict["sample_idx"] = self._sample_idx
         else:
-            # Save the iterable dataset's state to later efficiently resume from it
-            # https://huggingface.co/docs/datasets/v3.5.0/en/stream#save-a-dataset-checkpoint-and-resume-iteration
             _state_dict["data"] = self._data.state_dict()
 
         return _state_dict
-
 
 class SyntheticDataset(IterableDataset, Stateful):
     """PyTorch IterableDataset for generating synthetic data on-the-fly.
