@@ -78,6 +78,7 @@ class HuggingFaceDataset(IterableDataset, Stateful):
             ds = load_dataset(dataset_path, split="train")
 
         # NOTE: datasets are pre-shuffled
+        self.rank = rank
         self._data = split_dataset_by_node(ds, rank, world_size)
         self.dataset_name = dataset_name
         self.seq_len = seq_len
@@ -269,7 +270,7 @@ class DPAwareDataLoader(StatefulDataLoader, Stateful):
 
     def state_dict(self) -> Dict[str, Any]:
         # store state only for dp rank to avoid replicating the same state across other dimensions
-        return {self._rank_id: pickle.dumps(super().state_dict())}
+        return {self._rank_id: pickle.dumps(super().state_dict(), protocol=pickle.HIGHEST_PROTOCOL)}
 
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         # state being empty is valid
