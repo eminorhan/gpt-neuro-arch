@@ -1,5 +1,11 @@
 ### Large-scale distributed training of autoregressive generative models on *the Neural Pile*
 
+**Changes in 2d_rope branch:**
+* `ncclenv/lib/python3.11/site-packages/torch/serialization.py`. line 58: `DEFAULT_PROTOCOL = 2` -> `DEFAULT_PROTOCOL = 4`
+* `ncclenv/lib/python3.11/site-packages/torch/distributed/checkpoint/filesystem.py`. line 819: `weights_only=True` -> `weights_only=False`
+
+=============================================================================================
+
 This is a copy of the [`gpt-neuro`](https://github.com/eminorhan/gpt-neuro) repository on Arch, an HPE Cray EX254n system with 168 GH200 superchips. Currently the following models can be trained with this repository:
 
 * `primate-8B-131k`: pretrained on primate data ([training script](train_primate_8B_131k.sh))
