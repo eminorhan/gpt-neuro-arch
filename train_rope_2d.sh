@@ -30,6 +30,7 @@ export TRITON_CACHE_DIR="/lustre/gale/stf218/scratch/emin/triton"
 export PYTORCH_KERNEL_CACHE_PATH="/lustre/gale/stf218/scratch/emin/pytorch_kernel_cache"
 export HF_HUB_OFFLINE=1
 export GPUS_PER_NODE=4
+export PICKLE_PROTOCOL=5
 
 # set network
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
