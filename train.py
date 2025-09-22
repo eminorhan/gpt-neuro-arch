@@ -118,7 +118,9 @@ def main(job_config: JobConfig):
     float8_handler.convert_to_float8_training(model)
 
     # log model size
+    model_param_count = utils.get_num_params(model)
     num_flop_per_token = utils.get_num_flop_per_token(utils.get_num_params(model, exclude_embedding=True), model_config, job_config.training.seq_len)
+    logger.info(f"Model size: {model_param_count} params (including embedding params)")
 
     # loss function to be shared by Pipeline Parallel and SPMD training
     def loss_fn(pred, labels):
