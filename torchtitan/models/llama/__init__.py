@@ -12,7 +12,16 @@ from torchtitan.models.llama.model import ModelArgs, Transformer
 __all__ = ["Transformer"]
 
 llama3_configs = {
-    "1B": ModelArgs(
+    "250M": ModelArgs(
+        dim=1024,
+        n_layers=16,
+        n_heads=16,
+        n_kv_heads=8,
+        ffn_dim_multiplier=1.3,
+        multiple_of=1024,
+        rope_theta=500000,
+    ),
+    "870M": ModelArgs(
         dim=2048,
         n_layers=16,
         n_heads=32,
@@ -21,7 +30,16 @@ llama3_configs = {
         multiple_of=1024,
         rope_theta=500000,
     ),
-    "8B": ModelArgs(
+    "2B": ModelArgs(
+        dim=3072,
+        n_layers=16,
+        n_heads=32,
+        n_kv_heads=8,
+        ffn_dim_multiplier=1.3,
+        multiple_of=1024,
+        rope_theta=500000,
+    ),
+    "7B": ModelArgs(
         dim=4096,
         n_layers=32,
         n_heads=32,
