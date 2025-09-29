@@ -17,7 +17,8 @@ _supported_datasets = {
     "primate": "eminorhan/neural-pile-primate",
     "willett": "eminorhan/willett",
     "willett-churchland": ["eminorhan/willett", "eminorhan/churchland"],
-    "willett-churchland-makin": ["eminorhan/willett", "eminorhan/churchland", "eminorhan/makin"]
+    "willett-churchland-makin": ["eminorhan/willett", "eminorhan/churchland", "eminorhan/makin"],
+    "card-willett-churchland-makin": ["eminorhan/card", "eminorhan/willett", "eminorhan/churchland", "eminorhan/makin"]
 }
 
 class HuggingFaceDataset(IterableDataset, Stateful):
