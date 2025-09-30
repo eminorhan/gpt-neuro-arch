@@ -1,8 +1,8 @@
 # torchtitan Config.toml
 
 [job]
-dump_folder = "./outputs/primate_250M_131k"
-description = "primate_250M_131k training"
+dump_folder = "./outputs/cwcm_2B_131k"
+description = "cwcm_2B_131k training"
 
 [profiling]
 enable_profiling = false
@@ -10,13 +10,13 @@ save_traces_folder = "profile_trace"
 profile_freq = 10
 
 [metrics]
-log_freq = 10
+log_freq = 400
 enable_tensorboard = false
 save_tb_folder = "tb"
 
 [model]
 name = "llama3"
-flavor = "250M"  # 7B / 2B / 870M / 250M
+flavor = "2B"  # 7B / 2B / 870M / 250M
 norm_type = "rmsnorm"  # layernorm / np_layernorm / rmsnorm / fused_rmsnorm
 
 [optimizer]
@@ -34,13 +34,13 @@ data_parallel_replicate_degree = 1
 data_parallel_shard_degree = -1
 tensor_parallel_degree = 1
 compile = false
-dataset = "primate"
+dataset = "card-willett-churchland-makin"
 
 [experimental]
 pipeline_parallel_degree = 1
 
 [checkpoint]
-enable_checkpoint = false
+enable_checkpoint = true
 folder = "checkpoint"
 interval_type = "steps"
 interval = 400
