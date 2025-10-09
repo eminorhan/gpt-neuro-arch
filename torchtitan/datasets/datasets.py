@@ -26,9 +26,7 @@ class HuggingFaceDataset(IterableDataset, Stateful):
 
     Args:
         dataset_name (str): name of the dataset to load
-        dataset_path (Optional[str]):
-            Path to the dataset in the file system. If provided, data will be loaded
-            from this path instead of downloaded.
+        dataset_path (Optional[str]): path to the dataset in the file system. If provided, data will be loaded from this path instead of downloaded.
         seq_len (int): max sequence length
         world_size (int): number of data parallel processes participating in training
         rank (int): rank of the current data parallel process

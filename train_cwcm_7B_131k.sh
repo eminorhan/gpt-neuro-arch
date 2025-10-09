@@ -9,7 +9,7 @@
 #SBATCH --time=6:00:00
 #SBATCH --job-name=train_cwcm_7B_131k
 #SBATCH --output=train_cwcm_7B_131k_%A_%a.out
-#SBATCH --array=0-1
+#SBATCH --array=0
 
 # activate venv
 source /lustre/gale/stf218/scratch/emin/ncclvenv/bin/activate
