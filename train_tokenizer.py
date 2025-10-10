@@ -1,6 +1,6 @@
 import os
 import numpy as np
-from datasets import loade_dataset, Dataset
+from datasets import load_dataset, Dataset
 from tokenizers import Tokenizer, models, pre_tokenizers, trainers, decoders
 
 
