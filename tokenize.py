@@ -33,7 +33,7 @@ def get_training_corpus(dataset):
 
 if __name__ == "__main__":
 
-    spike_dataset = load_dataset(, split="train")
+    spike_dataset = load_dataset(HF_REPO_NAME, split="train")
     print(f"Dataset ready with {len(spike_dataset)} samples.")
 
     # We will use a BPE model. <UNK> is for out-of-vocabulary tokens.
