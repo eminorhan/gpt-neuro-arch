@@ -14,9 +14,8 @@ TOKENIZER_PATH = "spike-count-bpe-tokenizer.json"  # path to save the trained to
 # data iterator for tokenizer training
 def get_training_corpus(dataset):
     """
-    A generator that iterates through the dataset, applies the specific
-    preprocessing you described, and yields samples as space-separated strings.
-    The Hugging Face trainer will consume data from this generator.
+    A generator that iterates through the dataset, applies the bos token to spike count arrays, 
+    and yields samples as space-separated strings. BPE trainer will consume data from this generator.
     """
     for sample in dataset:
         # 1. Convert to numpy array.
