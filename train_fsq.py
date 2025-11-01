@@ -2,7 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-
+from torch.utils.data import DataLoader
+from datasets import load_dataset
+from datasets.distributed import split_dataset_by_node
 
 def round_ste(z: torch.Tensor) -> torch.Tensor:
     """
@@ -368,7 +370,34 @@ class FSQ_VAE(nn.Module):
         return x_hat.squeeze(1)  # (B, N, T)
 
 
+def setup_distributed():
+    """
+    Initializes the distributed process group. torchrun sets RANK, LOCAL_RANK, and WORLD_SIZE environment variables.
+    """
+    # Initialize distributed process group
+    dist.init_process_group(backend="nccl")
+    
+    # Get distributed environment variables
+    world_size = int(os.environ['WORLD_SIZE'])
+    rank = int(os.environ['RANK'])
+    local_rank = int(os.environ['LOCAL_RANK'])
+    
+    # Pin the current process to a specific GPU
+    torch.cuda.set_device(local_rank)
+    print(f"Distributed setup: Rank {rank}/{world_size} on device {local_rank}")
+    
+    return rank, world_size, local_rank
+
+
+def cleanup_distributed():
+    """Cleans up the distributed process group."""
+    dist.destroy_process_group()
+    print("Distributed cleanup complete.")
+
+
 if __name__ == "__main__":
+
+    rank, world_size, local_rank = setup_distributed()
 
     # Data dimensions (must be divisible by patch_size)
     N_DIM = 1024 
@@ -385,7 +414,10 @@ if __name__ == "__main__":
     DEC_DEPTH = 6    # Decoder layers
     NUM_HEADS = 8    # Attention heads
 
-    # Create the model
+    # Training hyperparameters
+    EPOCHS = 1
+
+    # Create the model and wrap in DDP
     model = FSQ_VAE(
         levels=levels,
         img_size=(N_DIM, T_DIM),
@@ -395,31 +427,53 @@ if __name__ == "__main__":
         decoder_depth=DEC_DEPTH,
         num_heads=NUM_HEADS
     )
+    model.to(local_rank)
+    model = DDP(model, device_ids=[local_rank], output_device=local_rank)
 
-    # --- 1. Training ---
-    # Create some dummy data
-    dummy_data = (torch.rand(4, N_DIM, T_DIM) * 255).to(torch.uint8)
-    data_normalized = dummy_data.float() / 255.0
-
-    # Standard autoencoder training
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    # Set up optimizer and loss
+    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
     loss_fn = nn.MSELoss()
 
-    # --- Example Training Step ---
+    # set up dataset and data loaders
+    ds = load_dataset("eminorhan/neural-pile-primate", split="train")
+    ds = split_dataset_by_node(ds, rank, world_size)
+    print(f"Rank {rank}: Sharded dataset size: {len(ds)}")
+
+    train_loader = DataLoader(
+        ds, 
+        batch_size=32, 
+        shuffle=True  # this shuffles the local shard
+    )
+
+    # ====== training loop ======
     model.train()
     optimizer.zero_grad()
+    train_loss = 0.0
 
-    # Forward pass
-    x_reconstructed, z_pre_quant, z_post_quant = model(data_normalized)
+    print(f"[Rank {rank}] Starting training for {EPOCHS} epochs...")
+    for epoch in range(EPOCHS):            
+        for i, batch_data in enumerate(train_loader):
+            # Move data to the correct GPU
+            data = batch_data.to(local_rank, non_blocking=True)
+            
+            # Forward pass
+            x_reconstructed, _, _ = model(data)
+            
+            # Compute loss
+            loss = loss_fn(x_reconstructed, data)
+            
+            # Backward pass and optimizer step
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            train_loss += loss.item()
+            
+            if rank == 0 and i % 50 == 0:
+                print(f"Epoch {epoch} | Batch {i}/{len(train_loader)} | Train Loss: {loss.item():.6f}")
 
-    # As before, FSQ needs no auxiliary losses [cite: 38]
-    loss = loss_fn(x_reconstructed, data_normalized)
-    loss.backward()
-    optimizer.step()
 
-    print(f"ViT Training Loss: {loss.item()}")
-
-    # --- 2. Compression & Decompression (After Training) ---
+    # ====== compression & decompression eval (after training) ======
     model.eval()
 
     sample = data_normalized[0].unsqueeze(0) # (1, 1024, 1024)
