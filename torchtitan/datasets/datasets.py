@@ -266,15 +266,13 @@ def build_data_loader(
     dataset with synthetically generated data.
 
     Args:
-        dataset_name (str): The name of the dataset. Use "synthetic" to generate
-            data on the fly. Otherwise, use a name from _supported_datasets.
+        dataset_name (str): The name of the dataset. Use "synthetic" to generate data on the fly. Otherwise, use a name from _supported_datasets.
         batch_size (int): The batch size for the data loader.
         seq_len (int): The sequence length of the samples.
         vocab_size (int): The vocabulary size.
         world_size (int): The total number of processes in the distributed group.
         rank (int): The rank of the current process.
-        dataset_path (Optional[str]): Path to a local dataset. Required for
-            unsupported Hugging Face datasets.
+        dataset_path (Optional[str]): Path to a local dataset. Required for unsupported Hugging Face datasets.
         infinite (bool): Whether the data loader should loop infinitely.
 
     Returns:

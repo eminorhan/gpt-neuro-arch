@@ -1,10 +1,16 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import torch.distributed as dist
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
+from torch.nn.parallel import DistributedDataParallel as DDP
 from datasets import load_dataset
 from datasets.distributed import split_dataset_by_node
+from typing import Tuple
+
 
 def round_ste(z: torch.Tensor) -> torch.Tensor:
     """
@@ -22,14 +28,14 @@ class FSQ(nn.Module):
     """
     def __init__(self, levels: list[int]):
         super().__init__()
-        
+        # TODO: check dtypes
         # [d]
         self.levels = torch.tensor(levels, dtype=torch.float32)
         self.d = len(levels) # Number of dimensions
         
         # [d], e.g., [1, L1, L1*L2, ...]
         basis = torch.cumprod(torch.tensor([1] + levels[:-1]), dim=0)
-        self.register_buffer('basis', basis.to(torch.uint32))
+        self.register_buffer('basis', basis.to(torch.int64))
         
         self.codebook_size = np.prod(levels)
         
@@ -122,236 +128,142 @@ class FSQ(nn.Module):
         return z_hat_normalized
 
 
-class PatchEmbed(nn.Module):
-    """
-    2D spike count array to patch embedding
+class MLPBlock(nn.Module):
+    """A simple MLP block"""
+    def __init__(self, hidden_dim: int):
+        super().__init__()
+        self.fc = nn.Linear(hidden_dim, hidden_dim)
+        self.act = nn.GELU() 
     
-    Treats the (n, t) array as a 1-channel image and converts it into a sequence of flattened patch embeddings.
-    """
-    def __init__(self, img_size=(1000, 2000), patch_size=(32, 32), in_chans=1, embed_dim=256):
-        super().__init__()
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
-        self.num_patches = self.grid_size[0] * self.grid_size[1]
-        
-        self.proj = nn.Conv2d(
-            in_chans, 
-            embed_dim, 
-            kernel_size=patch_size, 
-            stride=patch_size
-        )
-
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x shape: (B, 1, N, T)
-        x = self.proj(x)  # (B, embed_dim, n_patches, t_patches)
-        # Flatten the spatial dimensions and permute
-        x = x.flatten(2).transpose(1, 2)  # (B, num_patches, embed_dim)
-        return x
+        return self.act(self.fc(x))
 
 
-class ViTEncoder(nn.Module):
-    """Transformer Encoder for FSQ"""
-    def __init__(self, num_patches: int, embed_dim: int, fsq_dim: int, depth: int, num_heads: int, mlp_ratio: float = 4.0):
+class MLPEncoder(nn.Module):
+    """MLP Encoder for FSQ"""
+    def __init__(self, input_dim: int, hidden_dim: int, fsq_dim: int, depth: int):
         super().__init__()
-        
-        # Learnable positional embeddings
-        self.pos_embed = nn.Parameter(torch.randn(1, num_patches, embed_dim))
-        
-        # Transformer blocks
-        encoder_layer = nn.TransformerEncoderLayer(
-            d_model=embed_dim,
-            nhead=num_heads,
-            dim_feedforward=int(embed_dim * mlp_ratio),
-            batch_first=True,  # Expects (B, Seq, Feat)
-            activation='gelu'
-        )
+                
+        self.proj = nn.Linear(input_dim, hidden_dim)
+        self.proj_act = nn.GELU()
 
-        self.blocks = nn.TransformerEncoder(encoder_layer, num_layers=depth)
+        # A stack of MLP blocks
+        layers = []
+        for _ in range(depth):
+            layers.append(MLPBlock(hidden_dim=hidden_dim))
+
+        self.blocks = nn.Sequential(*layers)
         
         # Final layer norm and projection head
-        self.norm = nn.LayerNorm(embed_dim)
-        self.head = nn.Linear(embed_dim, fsq_dim)
+        self.norm = nn.LayerNorm(hidden_dim)
+        self.head = nn.Linear(hidden_dim, fsq_dim)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x shape: (B, num_patches, embed_dim)
         
-        # Add positional embedding
-        x = x + self.pos_embed
+        # Input layer
+        x = self.proj_act(self.proj(x))
         
-        # Pass through transformer
+        # Pass through blocks
         x = self.blocks(x)
         
         # Normalize
         x = self.norm(x)
         
         # Project to FSQ's latent dimension 'd'
-        z_e = self.head(x)  # (B, num_patches, d)
+        z_e = self.head(x)
         return z_e
 
-class ViTDecoder(nn.Module):
-    """Transformer Decoder for FSQ"""
-    def __init__(self, num_patches: int, embed_dim: int, fsq_dim: int, grid_size: tuple[int, int], patch_size: tuple[int, int], depth: int, num_heads: int, mlp_ratio: float = 4.0):
+class MLPDecoder(nn.Module):
+    """MLP Decoder for FSQ"""
+    def __init__(self, fsq_dim: int, hidden_dim: int, output_dim: int, depth: int):
         super().__init__()
-        self.num_patches = num_patches
-        self.embed_dim = embed_dim
-        self.grid_size = grid_size
         
-        # Project from FSQ's dim 'd' back to the transformer's embed_dim
-        self.in_proj = nn.Linear(fsq_dim, embed_dim)
+        # Project from FSQ's dim 'd' back to MLP hidden dim
+        self.proj = nn.Linear(fsq_dim, hidden_dim)
+        self.proj_act = nn.GELU()
         
-        # Positional embedding
-        self.pos_embed = nn.Parameter(torch.randn(1, num_patches, embed_dim))
+        # A stack of MLP blocks
+        layers = []
+        for _ in range(depth):
+            layers.append(MLPBlock(hidden_dim=hidden_dim))
 
-        # Transformer blocks
-        decoder_layer = nn.TransformerEncoderLayer(
-            d_model=embed_dim,
-            nhead=num_heads,
-            dim_feedforward=int(embed_dim * mlp_ratio),
-            batch_first=True,
-            activation='gelu'
-        )
-        self.blocks = nn.TransformerEncoder(decoder_layer, num_layers=depth)
+        self.blocks = nn.Sequential(*layers)
         
-        # Final norm
-        self.norm = nn.LayerNorm(embed_dim)
-        
-        # "Un-patching" head
-        # This ConvTranspose2d stitches the patches back together
-        self.head = nn.Sequential(
-            nn.ConvTranspose2d(
-                embed_dim,
-                out_channels=1,
-                kernel_size=patch_size,
-                stride=patch_size
-            ),
-            nn.Sigmoid()  # Map output to [0, 1]
-        )
+        # Final norm and projection head
+        self.norm = nn.LayerNorm(hidden_dim)
+        self.head = nn.Linear(hidden_dim, output_dim)
+        self.sigm = nn.Sigmoid()
 
     def forward(self, z_q: torch.Tensor) -> torch.Tensor:
-        # z_q shape: (B, num_patches, d)
         
-        # Project back to embed_dim
-        x = self.in_proj(z_q)  # (B, num_patches, embed_dim)
-        
-        # Add positional embedding
-        x = x + self.pos_embed
-        
-        # Pass through transformer
+        # Project back to hidden_dim
+        x = self.proj_act(self.proj(z_q))
+                
+        # Pass through decoder
         x = self.blocks(x)
         x = self.norm(x)
-        
-        # --- Un-patch and reconstruct ---
-        # 1. Permute back to (B, embed_dim, num_patches)
-        x = x.transpose(1, 2)
-        
-        # 2. Un-flatten to grid (B, embed_dim, n_patches, t_patches)
-        x = x.view(-1, self.embed_dim, self.grid_size[0], self.grid_size[1])
-        
-        # 3. Decode patches to full array
-        x_hat = self.head(x)  # (B, 1, N, T)
-        
-        return x_hat
-
+                
+        # Pass through decoder head        
+        x = self.sigm(self.head(x))
+        return x
 
 class FSQ_VAE(nn.Module):
     """
-    A Transformer-based (ViT) Autoencoder using FSQ.
+    An MLP-based autoencoder using FSQ.
     """
     def __init__(
         self, 
         levels: list[int],
-        img_size: tuple[int, int] = (1024, 1024),
-        patch_size: tuple[int, int] = (32, 32),
-        embed_dim: int = 256,
-        encoder_depth: int = 6,
-        decoder_depth: int = 6,
-        num_heads: int = 8
+        input_dim: int,
+        encoder_hidden_dim: int,
+        decoder_hidden_dim: int,
+        encoder_depth: int,
+        decoder_depth: int,
     ):
         super().__init__()
         
         self.fsq_dim = len(levels)
-        self.img_size = img_size
-        self.patch_size = patch_size
         
-        # Calculate patch grid dimensions
-        self.grid_size = (img_size[0] // patch_size[0], img_size[1] // patch_size[1])
-        self.num_patches = self.grid_size[0] * self.grid_size[1]
+        # MLP Encoder
+        self.encoder = MLPEncoder(input_dim, encoder_hidden_dim, self.fsq_dim, encoder_depth)
         
-        # 1. Patch Embedding
-        self.patch_embed = PatchEmbed(
-            img_size=img_size,
-            patch_size=patch_size,
-            in_chans=1,
-            embed_dim=embed_dim
-        )
-        
-        # 2. Transformer Encoder
-        self.encoder = ViTEncoder(
-            num_patches=self.num_patches,
-            embed_dim=embed_dim,
-            fsq_dim=self.fsq_dim,
-            depth=encoder_depth,
-            num_heads=num_heads
-        )
-        
-        # 3. FSQ Module
+        # FSQ Module
         self.fsq = FSQ(levels)
         
-        # 4. Transformer Decoder
-        self.decoder = ViTDecoder(
-            num_patches=self.num_patches,
-            embed_dim=embed_dim,
-            fsq_dim=self.fsq_dim,
-            grid_size=self.grid_size,
-            patch_size=self.patch_size,
-            depth=decoder_depth,
-            num_heads=num_heads
-        )
+        # MLP Decoder
+        self.decoder = MLPDecoder(self.fsq_dim, decoder_hidden_dim, input_dim, decoder_depth)
 
-    def forward(self, x_in: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Full pass for training.
-        x_in shape: (B, N, T), normalized to [0, 1].
+        x shape: (B, L), normalized to [0, 1].
         """
-        # Add channel dim: (B, N, T) -> (B, 1, N, T)
-        x = x_in.unsqueeze(1)
         
-        # 1. Embed patches
-        patch_embeddings = self.patch_embed(x)  # (B, num_patches, embed_dim)
+        # Encode
+        z_e = self.encoder(x)  # (B, d)
         
-        # 2. Encode
-        z_e = self.encoder(patch_embeddings)  # (B, num_patches, d)
-        
-        # 3. Quantize
+        # Quantize
         # FSQ forward applies to the last dimension
-        z_q_normalized = self.fsq(z_e)  # (B, num_patches, d)
+        z_q_normalized = self.fsq(z_e)  # (B, d)
         
-        # 4. Decode
-        x_hat = self.decoder(z_q_normalized)  # (B, 1, N, T)
-        
-        # Remove channel dim
-        x_hat = x_hat.squeeze(1)  # (B, N, T)
-        
+        # Decode
+        x_hat = self.decoder(z_q_normalized)  # (B, L)
+                
         return x_hat, z_e, z_q_normalized
 
     @torch.no_grad()
-    def compress(self, x_in: torch.Tensor) -> torch.Tensor:
+    def compress(self, x: torch.Tensor) -> torch.Tensor:
         """
         Compresses the input array into a sequence of integer indices.
-        x_in shape: (B, N, T), normalized to [0, 1]
-        """
-        x = x_in.unsqueeze(1)  # (B, 1, N, T)
-        
-        patch_embeddings = self.patch_embed(x)  # (B, num_patches, embed_dim)
-        z_e = self.encoder(patch_embeddings)    # (B, num_patches, d)
+        x_in shape: (B, L), normalized to [0, 1]
+        """        
+        z_e = self.encoder(x)    # (B, d)
         
         # Quantize (no STE, but fsq.forward doesn't use it anyway)
         z_q_normalized = self.fsq(z_e)
         
-        # Get indices
-        # This is the compressed data!
-        indices = self.fsq.codes_to_indexes(z_q_normalized) # (B, num_patches)
+        # Get indices (this is the compressed token indices)
+        indices = self.fsq.codes_to_indexes(z_q_normalized) # (B,)
         
         return indices
 
@@ -359,15 +271,15 @@ class FSQ_VAE(nn.Module):
     def decompress(self, indices: torch.Tensor) -> torch.Tensor:
         """
         Decompresses a sequence of integer indices back into an array.
-        indices shape: (B, num_patches)
+        indices shape: (B,)
         """
-        # (B, num_patches) -> (B, num_patches, d)
+        # (B,) -> (B, d)
         z_q_normalized = self.fsq.indexes_to_codes(indices)
         
         # Decode
-        x_hat = self.decoder(z_q_normalized)  # (B, 1, N, T)
+        x_hat = self.decoder(z_q_normalized)  # (B, L)
         
-        return x_hat.squeeze(1)  # (B, N, T)
+        return x_hat
 
 
 def setup_distributed():
@@ -395,24 +307,97 @@ def cleanup_distributed():
     print("Distributed cleanup complete.")
 
 
+def get_patches_column_major(data_array: np.ndarray, patch_size: Tuple[int, int]) -> np.ndarray:
+    """
+    Pads a 2D array and extracts patches in column-major order.
+
+    Given a 2D (n, t) array and a patch size (p0, p1), this function:
+    1. Pads the array with zeros so that n is divisible by p0 and t is divisible by p1.
+    2. Extracts all (p0, p1) patches.
+    3. Returns the patches as a 3D array (num_patches, p0, p1) ordered in column-major fashion.
+
+    Args:
+        data_array: The 2D input NumPy array of dtype uint8 (or any other).
+        patch_size: A tuple (p0, p1) specifying the patch dimensions.
+
+    Returns:
+        A 3D NumPy array containing the extracted patches. The first
+        dimension iterates through the patches in column-major order.
+    """
+    if data_array.ndim != 2:
+        raise ValueError(f"Input array must be 2-dimensional, but got {data_array.ndim} dimensions.")
+        
+    p0, p1 = patch_size
+    if not (p0 > 0 and p1 > 0):
+        raise ValueError(f"Patch dimensions must be positive, but got ({p0}, {p1}).")
+
+    n, t = data_array.shape
+
+    # 1. Calculate padding
+    # The (p0 - (n % p0)) % p0 formula correctly handles the case where n % p0 == 0
+    pad_n = (p0 - (n % p0)) % p0
+    pad_t = (p1 - (t % p1)) % p1
+
+    # 2. Apply padding if needed
+    if pad_n > 0 or pad_t > 0:
+        # Pad at the bottom (0, pad_n) and at the right (0, pad_t)
+        padded_array = np.pad(
+            data_array,
+            ((0, pad_n), (0, pad_t)),
+            mode='constant',
+            constant_values=0
+        )
+    else:
+        # No padding was necessary
+        padded_array = data_array
+    
+    # Get the new, padded dimensions
+    N, T = padded_array.shape
+    
+    # Calculate the number of patches along each dimension
+    num_patches_n = N // p0
+    num_patches_t = T // p1
+
+    # Reshape into a 4D array: (num_patches_n, p0, num_patches_t, p1)
+    # This groups the data by patch row, then row-in-patch,
+    # then patch-column, then col-in-patch.
+    # We can think of this as a (num_patches_n, num_patches_t) grid of (p0, p1) patches
+    reshaped = padded_array.reshape(num_patches_n, p0, num_patches_t, p1)
+
+    # To get column-major order, we transpose the first and third axes.
+    # Axes: (0: num_patches_n, 1: p0, 2: num_patches_t, 3: p1)
+    # Transpose to: (2: num_patches_t, 0: num_patches_n, 1: p0, 3: p1)
+    # This groups by patch-column, then patch-row.
+    transposed = reshaped.transpose(2, 0, 1, 3)
+
+    # Finally, reshape to flatten the patches.
+    # The (num_patches_t, num_patches_n) dimensions are flattened in
+    # row-major order (C order), which, due to the transpose,
+    # gives us the desired column-major patch order:
+    # (col 0, row 0), (col 0, row 1), ..., (col 1, row 0), ...
+    patches = transposed.reshape(-1, p0, p1)
+
+    return patches
+
+
 if __name__ == "__main__":
 
     rank, world_size, local_rank = setup_distributed()
 
-    # Data dimensions (must be divisible by patch_size)
-    N_DIM = 1024 
-    T_DIM = 1024 
-    P_DIM = 16 # Patch size (16 x 16)
+    # Data dimension
+    BATCH_SIZE = 8
+    PATCH_SIZE = (4, 16)
+    INPUT_DIM = np.prod(PATCH_SIZE)
 
     # FSQ levels (e.g., codebook size 4096)
     levels = [7, 5, 5, 5, 5]
     d = len(levels)
 
-    # ViT Hypeparameters
-    EMBED_DIM = 256  # Transformer working dimension
-    ENC_DEPTH = 6    # Encoder layers
-    DEC_DEPTH = 6    # Decoder layers
-    NUM_HEADS = 8    # Attention heads
+    # MLP Hypeparameters
+    ENCODER_HIDDEN_DIM = 4096
+    DECODER_HIDDEN_DIM = 4096
+    ENCODER_DEPTH = 4
+    DECODER_DEPTH = 4
 
     # Training hyperparameters
     EPOCHS = 1
@@ -420,13 +405,13 @@ if __name__ == "__main__":
     # Create the model and wrap in DDP
     model = FSQ_VAE(
         levels=levels,
-        img_size=(N_DIM, T_DIM),
-        patch_size=(P_DIM, P_DIM),
-        embed_dim=EMBED_DIM,
-        encoder_depth=ENC_DEPTH,
-        decoder_depth=DEC_DEPTH,
-        num_heads=NUM_HEADS
+        input_dim=INPUT_DIM,
+        encoder_hidden_dim=ENCODER_HIDDEN_DIM,
+        decoder_hidden_dim=DECODER_HIDDEN_DIM,
+        encoder_depth=ENCODER_DEPTH,
+        decoder_depth=DECODER_DEPTH,
     )
+
     model.to(local_rank)
     model = DDP(model, device_ids=[local_rank], output_device=local_rank)
 
@@ -434,15 +419,19 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
     loss_fn = nn.MSELoss()
 
-    # set up dataset and data loaders
-    ds = load_dataset("eminorhan/neural-pile-primate", split="train")
-    ds = split_dataset_by_node(ds, rank, world_size)
-    print(f"Rank {rank}: Sharded dataset size: {len(ds)}")
-
+    # set up dataset, sampler, and loader
+    ds = load_dataset("eminorhan/neural-pile-rodent", split="train")
+    train_sampler = DistributedSampler(
+        ds,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=True  # Sampler handles the shuffling
+    )
     train_loader = DataLoader(
         ds, 
-        batch_size=32, 
-        shuffle=True  # this shuffles the local shard
+        batch_size=1,
+        sampler=train_sampler,
+        shuffle=False
     )
 
     # ====== training loop ======
@@ -451,42 +440,54 @@ if __name__ == "__main__":
     train_loss = 0.0
 
     print(f"[Rank {rank}] Starting training for {EPOCHS} epochs...")
-    for epoch in range(EPOCHS):            
-        for i, batch_data in enumerate(train_loader):
-            # Move data to the correct GPU
-            data = batch_data.to(local_rank, non_blocking=True)
+    for epoch in range(EPOCHS):
+
+        train_sampler.set_epoch(epoch)            
+        
+        for i, batch in enumerate(train_loader):
+
+            batch = np.array(batch["spike_counts"], dtype=np.uint8)
+            batch = batch.squeeze(-1)
+            print(f"1. Rank: {rank}; batch size: {batch.shape}")
+
+            batch = get_patches_column_major(batch, PATCH_SIZE)
+            print(f"2. Rank: {rank}; batch size: {batch.shape}")
+            # batch = torch.from_numpy(batch)
+
+            # # Move data to the correct GPU
+            # data = batch.to(local_rank, non_blocking=True)
             
-            # Forward pass
-            x_reconstructed, _, _ = model(data)
+            # # Forward pass
+            # x_reconstructed, _, _ = model(data)
             
-            # Compute loss
-            loss = loss_fn(x_reconstructed, data)
+            # # Compute loss
+            # loss = loss_fn(x_reconstructed, data)
             
-            # Backward pass and optimizer step
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
+            # # Backward pass and optimizer step
+            # optimizer.zero_grad()
+            # loss.backward()
+            # optimizer.step()
             
-            train_loss += loss.item()
+            # train_loss += loss.item()
             
-            if rank == 0 and i % 50 == 0:
-                print(f"Epoch {epoch} | Batch {i}/{len(train_loader)} | Train Loss: {loss.item():.6f}")
+            # if rank == 0 and i % 50 == 0:
+            #     print(f"Epoch {epoch} | Batch {i}/{len(train_loader)} | Train Loss: {loss.item():.6f}")
 
 
-    # ====== compression & decompression eval (after training) ======
-    model.eval()
+    # # ====== compression & decompression eval (after training) ======
+    # model.eval()
 
-    sample = data_normalized[0].unsqueeze(0) # (1, 1024, 1024)
+    # sample = data_normalized[0].unsqueeze(0) # (1, 1024, 1024)
 
-    # Compress
-    # Original (1, 1024, 1024) float32 array: ~4 MB
-    # Compressed (1, 1024) uint32 array: ~4 KB
-    # (num_patches = (1024*1024) / (32*32) = 1024)
-    compressed_indices = model.compress(sample)
+    # # Compress
+    # # Original (1, 1024, 1024) float32 array: ~4 MB
+    # # Compressed (1, 1024) uint32 array: ~4 KB
+    # # (num_patches = (1024*1024) / (32*32) = 1024)
+    # compressed_indices = model.compress(sample)
 
-    # Decompress
-    decompressed_sample = model.decompress(compressed_indices)
+    # # Decompress
+    # decompressed_sample = model.decompress(compressed_indices)
 
-    print(f"Original shape: {sample.shape}")
-    print(f"Compressed shape: {compressed_indices.shape}") # (1, 1024)
-    print(f"Decompressed shape: {decompressed_sample.shape}")
+    # print(f"Original shape: {sample.shape}")
+    # print(f"Compressed shape: {compressed_indices.shape}") # (1, 1024)
+    # print(f"Decompressed shape: {decompressed_sample.shape}")
