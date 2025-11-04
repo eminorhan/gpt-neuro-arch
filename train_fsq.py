@@ -1,4 +1,5 @@
 import os
+import pickle
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -7,9 +8,13 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.distributed.checkpoint.stateful import Stateful
+from torchdata.stateful_dataloader import StatefulDataLoader
+
+from torch.utils.data import IterableDataset
 from datasets import load_dataset
 from datasets.distributed import split_dataset_by_node
-from typing import Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def round_ste(z: torch.Tensor) -> torch.Tensor:
@@ -375,9 +380,84 @@ def get_patches_column_major(data_array: np.ndarray, patch_size: Tuple[int, int]
     # row-major order (C order), which, due to the transpose,
     # gives us the desired column-major patch order:
     # (col 0, row 0), (col 0, row 1), ..., (col 1, row 0), ...
-    patches = transposed.reshape(-1, p0, p1)
+    patches = transposed.reshape(-1, p0*p1)
+    patches = np.unique(patches, axis=0)
 
     return patches
+
+
+class IterablePatchDataset(IterableDataset, Stateful):
+    """PyTorch Representation of the HuggingFace Dataset.
+
+    Args:
+        dataset_name (str): name of the dataset to load
+        world_size (int): number of data parallel processes participating in training
+        rank (int): rank of the current data parallel process
+        infinite (bool): whether to loop infinitely over the dataset
+
+    """
+    def __init__(
+        self,
+        dataset_name: str,
+        patch_size: Tuple[int, int],
+        world_size: int = 1,
+        rank: int = 0,
+    ) -> None:
+
+        ds = load_dataset(dataset_name, split="train")
+
+        # NOTE: datasets are pre-shuffled
+        self._data = split_dataset_by_node(ds, rank, world_size)
+        self.dataset_name = dataset_name
+        self.patch_size = patch_size
+
+    def __iter__(self):
+
+        while True:
+            for samples in self._get_data_iter():
+
+                samples = np.array(samples['spike_counts'])
+                samples = get_patches_column_major(samples, self.patch_size)
+                
+                for sample in samples:
+                    yield torch.from_numpy(sample) / 255.0  # normalize     
+
+    def _get_data_iter(self):
+        return iter(self._data)
+
+    def load_state_dict(self, state_dict):
+            assert "data" in state_dict
+            self._data.load_state_dict(state_dict["data"])
+
+    def state_dict(self):
+        # Save the iterable dataset's state to later efficiently resume from it:
+        # https://huggingface.co/docs/datasets/v3.5.0/en/stream#save-a-dataset-checkpoint-and-resume-iteration
+        _state_dict["data"] = self._data.state_dict()
+
+        return _state_dict
+
+class DPAwareDataLoader(StatefulDataLoader, Stateful):
+    """
+    A wrapper around the StatefulDataLoader that ensures that the state is stored only once per DP rank.
+    """
+    def __init__(self, dp_rank: int, dataset: IterableDataset, batch_size: int):
+        super().__init__(dataset, batch_size)
+        self._dp_rank = dp_rank
+        self._rank_id = f"dp_rank_{dp_rank}"
+
+    def state_dict(self) -> Dict[str, Any]:
+        # store state only for dp rank to avoid replicating the same state across other dimensions
+        return {self._rank_id: pickle.dumps(super().state_dict())}
+
+    def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
+        # state being empty is valid
+        if not state_dict:
+            return
+
+        if self._rank_id not in state_dict:
+            logger.warning(f"DataLoader state is empty for dp rank {self._dp_rank}, expected key {self._rank_id}")
+            return
+        super().load_state_dict(pickle.loads(state_dict[self._rank_id]))
 
 
 if __name__ == "__main__":
@@ -385,12 +465,12 @@ if __name__ == "__main__":
     rank, world_size, local_rank = setup_distributed()
 
     # Data dimension
-    BATCH_SIZE = 8
+    BATCH_SIZE = 1024
     PATCH_SIZE = (4, 16)
     INPUT_DIM = np.prod(PATCH_SIZE)
 
-    # FSQ levels (e.g., codebook size 4096)
-    levels = [7, 5, 5, 5, 5]
+    # FSQ levels (e.g., codebook size 64k)
+    levels = [8, 8, 8, 5, 5, 5]
     d = len(levels)
 
     # MLP Hypeparameters
@@ -400,7 +480,7 @@ if __name__ == "__main__":
     DECODER_DEPTH = 4
 
     # Training hyperparameters
-    EPOCHS = 1
+    TRAIN_STEPS = 100000
 
     # Create the model and wrap in DDP
     model = FSQ_VAE(
@@ -420,59 +500,38 @@ if __name__ == "__main__":
     loss_fn = nn.MSELoss()
 
     # set up dataset, sampler, and loader
-    ds = load_dataset("eminorhan/neural-pile-rodent", split="train")
-    train_sampler = DistributedSampler(
-        ds,
-        num_replicas=world_size,
-        rank=rank,
-        shuffle=True  # Sampler handles the shuffling
-    )
-    train_loader = DataLoader(
-        ds, 
-        batch_size=1,
-        sampler=train_sampler,
-        shuffle=False
-    )
+    ds = IterablePatchDataset("eminorhan/neural-pile-rodent", PATCH_SIZE, world_size, rank)
+    dl = DPAwareDataLoader(rank, ds, batch_size=BATCH_SIZE)
+    dl_iter = iter(dl)
 
     # ====== training loop ======
     model.train()
     optimizer.zero_grad()
-    train_loss = 0.0
+    
+    train_step = 0
+    while train_step < TRAIN_STEPS:
+        batch = next(dl_iter)
 
-    print(f"[Rank {rank}] Starting training for {EPOCHS} epochs...")
-    for epoch in range(EPOCHS):
+        optimizer.zero_grad()
 
-        train_sampler.set_epoch(epoch)            
+        # Move data to the correct GPU
+        data = batch.to(local_rank, non_blocking=True)
         
-        for i, batch in enumerate(train_loader):
-
-            batch = np.array(batch["spike_counts"], dtype=np.uint8)
-            batch = batch.squeeze(-1)
-            print(f"1. Rank: {rank}; batch size: {batch.shape}")
-
-            batch = get_patches_column_major(batch, PATCH_SIZE)
-            print(f"2. Rank: {rank}; batch size: {batch.shape}")
-            # batch = torch.from_numpy(batch)
-
-            # # Move data to the correct GPU
-            # data = batch.to(local_rank, non_blocking=True)
-            
-            # # Forward pass
-            # x_reconstructed, _, _ = model(data)
-            
-            # # Compute loss
-            # loss = loss_fn(x_reconstructed, data)
-            
-            # # Backward pass and optimizer step
-            # optimizer.zero_grad()
-            # loss.backward()
-            # optimizer.step()
-            
-            # train_loss += loss.item()
-            
-            # if rank == 0 and i % 50 == 0:
-            #     print(f"Epoch {epoch} | Batch {i}/{len(train_loader)} | Train Loss: {loss.item():.6f}")
-
+        # Forward pass
+        x_reconstructed, _, _ = model(data)
+        
+        # Compute loss
+        loss = loss_fn(x_reconstructed, data)
+        
+        # Backward pass and optimizer step
+        loss.backward()
+        optimizer.step()
+        
+        dist.all_reduce(loss, op=dist.ReduceOp.AVG)
+        train_step += 1
+        
+        if rank == 0 and train_step % 100 == 0:
+            print(f"Train step: {train_step} | Train Loss: {100.0*loss.item():.6f}")
 
     # # ====== compression & decompression eval (after training) ======
     # model.eval()
