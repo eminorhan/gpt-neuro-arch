@@ -2,11 +2,11 @@
 
 #SBATCH --account=stf218-arch
 #SBATCH --partition=batch
-#SBATCH --nodes=4
+#SBATCH --nodes=40
 #SBATCH --cpus-per-task=288
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
-#SBATCH --time=1:00:00
+#SBATCH --time=6:00:00
 #SBATCH --job-name=train_fsq
 #SBATCH --output=train_fsq_%A_%a.out
 #SBATCH --array=0
@@ -28,6 +28,7 @@ export HF_HOME="/lustre/gale/stf218/scratch/emin/huggingface"
 export HF_DATASETS_CACHE="/lustre/gale/stf218/scratch/emin/huggingface"
 export TRITON_CACHE_DIR="/lustre/gale/stf218/scratch/emin/triton"
 export PYTORCH_KERNEL_CACHE_PATH="/lustre/gale/stf218/scratch/emin/pytorch_kernel_cache"
+export MPLCONFIGDIR="/lustre/gale/stf218/scratch/emin/mplconfigdir"
 export HF_HUB_OFFLINE=1
 export GPUS_PER_NODE=4
 

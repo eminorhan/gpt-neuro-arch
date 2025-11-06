@@ -16,6 +16,7 @@ from datasets import load_dataset
 from datasets.distributed import split_dataset_by_node
 from typing import Any, Dict, List, Optional, Tuple
 
+import matplotlib.pyplot as plt
 
 def round_ste(z: torch.Tensor) -> torch.Tensor:
     """
@@ -141,7 +142,7 @@ class MLPBlock(nn.Module):
         self.act = nn.GELU() 
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.act(self.fc(x))
+        return self.act(self.fc(x)) + x
 
 
 class MLPEncoder(nn.Module):
@@ -465,8 +466,8 @@ if __name__ == "__main__":
     rank, world_size, local_rank = setup_distributed()
 
     # Data dimension
-    BATCH_SIZE = 1024
-    PATCH_SIZE = (4, 16)
+    BATCH_SIZE = 4
+    PATCH_SIZE = (2, 2)
     INPUT_DIM = np.prod(PATCH_SIZE)
 
     # FSQ levels (e.g., codebook size 64k)
@@ -474,10 +475,10 @@ if __name__ == "__main__":
     d = len(levels)
 
     # MLP Hypeparameters
-    ENCODER_HIDDEN_DIM = 4096
-    DECODER_HIDDEN_DIM = 4096
-    ENCODER_DEPTH = 4
-    DECODER_DEPTH = 4
+    ENCODER_HIDDEN_DIM = 128
+    DECODER_HIDDEN_DIM = 128
+    ENCODER_DEPTH = 2
+    DECODER_DEPTH = 2
 
     # Training hyperparameters
     TRAIN_STEPS = 100000
@@ -530,8 +531,18 @@ if __name__ == "__main__":
         dist.all_reduce(loss, op=dist.ReduceOp.AVG)
         train_step += 1
         
-        if rank == 0 and train_step % 100 == 0:
+        if rank == 0 and train_step % 1000 == 0:
             print(f"Train step: {train_step} | Train Loss: {100.0*loss.item():.6f}")
+            for i in range(4):
+                plt.subplot(2, 4, i+1)
+                plt.imshow(data.view(-1, PATCH_SIZE[0], PATCH_SIZE[1])[i, ...].detach().cpu().numpy(), interpolation='nearest', cmap='gray_r')
+                plt.axis('off')
+                plt.subplot(2, 4, i+5)
+                plt.imshow(x_reconstructed.view(-1, PATCH_SIZE[0], PATCH_SIZE[1])[i, ...].detach().cpu().numpy(), interpolation='nearest', cmap='gray_r')
+                plt.axis('off')
+            plt.tight_layout()    
+            plt.savefig(f"step_{train_step}_fsq.jpeg", bbox_inches='tight')
+            plt.close()
 
     # # ====== compression & decompression eval (after training) ======
     # model.eval()
