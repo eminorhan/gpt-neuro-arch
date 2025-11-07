@@ -469,6 +469,11 @@ if __name__ == "__main__":
     CHECKPOINT_DIR = 'fsq_ckpts'
     CHECKPOINT_INTERVAL = 30000
 
+    # Set this path to load weights from a checkpoint before training: e.g., "checkpoints/fsq_vae_step_10000.pth"
+    LOAD_CHECKPOINT_PATH = None
+    # Placeholder for optimizer state
+    optimizer_state_to_load = None
+
     # Data dimension
     BATCH_SIZE = 8
     PATCH_SIZE = (1, 5)
@@ -487,6 +492,9 @@ if __name__ == "__main__":
     # Training hyperparameters
     TRAIN_STEPS = 100000
 
+    # Variable to hold the current training step
+    train_step = 0
+
     # Create the model and wrap in DDP
     model = FSQ_VAE(
         levels=levels,
@@ -497,31 +505,68 @@ if __name__ == "__main__":
         decoder_depth=DECODER_DEPTH,
     )
 
+    # Move model to GPU
     model.to(local_rank)
+
+    # Set up dataset and loader
+    ds = IterablePatchDataset("eminorhan/neural-pile-rodent", PATCH_SIZE, world_size, rank)
+    dl = DPAwareDataLoader(rank, ds, batch_size=BATCH_SIZE)
+    dl_iter = iter(dl)
+
+    # Load ckpt. We do this only on rank 0.
+    if LOAD_CHECKPOINT_PATH and rank == 0:
+        if os.path.exists(LOAD_CHECKPOINT_PATH):
+            # Load the full checkpoint dictionary
+            checkpoint = torch.load(LOAD_CHECKPOINT_PATH, map_location='cpu')
+            
+            # Load states
+            model.load_state_dict(checkpoint['model_state_dict'])
+            ds.load_state_dict(checkpoint['dataset_state_dict'])
+            dl.load_state_dict(checkpoint['dataloader_state_dict'])
+            
+            # Update train_step and store optimizer state for later
+            train_step = checkpoint['train_step']
+            optimizer_state_to_load = checkpoint['optimizer_state_dict']
+            
+            print(f"Rank 0: Successfully loaded full checkpoint from {LOAD_CHECKPOINT_PATH}")
+        else:
+            print(f"Rank 0: Warning - Checkpoint path specified but not found, starting from scratch: {LOAD_CHECKPOINT_PATH}")
+
+    # Barrier to ensure rank 0 finishes loading (if applicable) before other processes continue and DDP is initialized.
+    dist.barrier()
+
+    # Broadcast train_step from rank 0 to all other ranks. This ensures all processes are on the same step
+    train_step_tensor = torch.tensor([train_step], dtype=torch.long, device=local_rank)
+    dist.broadcast(train_step_tensor, src=0)
+    train_step = train_step_tensor.item()
+
+    if rank == 0 and LOAD_CHECKPOINT_PATH and os.path.exists(LOAD_CHECKPOINT_PATH):
+        print(f"All ranks: Resuming training from step {train_step}")
+
+    # Wrap model in DDP
     model = DDP(model, device_ids=[local_rank], output_device=local_rank)
 
     # Set up optimizer and loss
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
     loss_fn = nn.MSELoss()
 
-    # Set up dataset, sampler, and loader
-    ds = IterablePatchDataset("eminorhan/neural-pile-rodent", PATCH_SIZE, world_size, rank)
-    dl = DPAwareDataLoader(rank, ds, batch_size=BATCH_SIZE)
-    dl_iter = iter(dl)
+    # Load optimizer state if it was loaded from checkpoint
+    if optimizer_state_to_load is not None:
+        optimizer.load_state_dict(optimizer_state_to_load)
+        if rank == 0:
+            print("Rank 0: Successfully loaded optimizer state.")
 
     # Create checkpoint directory on rank 0
     if rank == 0:
         os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
-    # ====== training loop ======
     model.train()
     optimizer.zero_grad()
     
-    train_step = 0
-
     # Variable to keep track of training loss during training
     running_loss = 0.0
 
+    # ====== training loop starts here ======
     while train_step < TRAIN_STEPS:
         batch = next(dl_iter)
 
@@ -553,7 +598,7 @@ if __name__ == "__main__":
                 
                 # Calculate and print average loss
                 avg_loss_1000_steps = running_loss / 1000
-                print(f"Train step: {train_step} | Avg Train Loss (last 1000): {100.0*avg_loss_1000_steps:.6f}")
+                print(f"Train step: {train_step} | Train Loss (avg over last 1000 steps): {100.0*avg_loss_1000_steps:.6f}")
                 
                 # Reset running loss after logging
                 running_loss = 0.0
@@ -575,9 +620,17 @@ if __name__ == "__main__":
             if train_step > 0 and train_step % CHECKPOINT_INTERVAL == 0:
                 CHECKPOINT_PATH = f"{CHECKPOINT_DIR}/fsq_vae_step_{train_step}.pth"
                 
-                # Save the model's state_dict (from model.module to unwrap DDP)
-                torch.save(model.module.state_dict(), CHECKPOINT_PATH)
-                print(f"Checkpoint saved to {CHECKPOINT_PATH}")
+                # MODIFIED: Save a full checkpoint dictionary
+                full_checkpoint = {
+                    'train_step': train_step,
+                    'model_state_dict': model.module.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'dataset_state_dict': ds.state_dict(),
+                    'dataloader_state_dict': dl.state_dict(),
+                }
+                
+                torch.save(full_checkpoint, CHECKPOINT_PATH)
+                print(f"Full checkpoint saved to {CHECKPOINT_PATH}")
 
     # # ====== compression & decompression eval (after training) ======
     # model.eval()
