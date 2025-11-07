@@ -465,9 +465,13 @@ if __name__ == "__main__":
 
     rank, world_size, local_rank = setup_distributed()
 
+    # Checkpointing
+    CHECKPOINT_DIR = 'fsq_ckpts'
+    CHECKPOINT_INTERVAL = 30000
+
     # Data dimension
-    BATCH_SIZE = 4
-    PATCH_SIZE = (2, 2)
+    BATCH_SIZE = 8
+    PATCH_SIZE = (1, 5)
     INPUT_DIM = np.prod(PATCH_SIZE)
 
     # FSQ levels (e.g., codebook size 64k)
@@ -475,8 +479,8 @@ if __name__ == "__main__":
     d = len(levels)
 
     # MLP Hypeparameters
-    ENCODER_HIDDEN_DIM = 128
-    DECODER_HIDDEN_DIM = 128
+    ENCODER_HIDDEN_DIM = 256
+    DECODER_HIDDEN_DIM = 256
     ENCODER_DEPTH = 2
     DECODER_DEPTH = 2
 
@@ -500,16 +504,24 @@ if __name__ == "__main__":
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
     loss_fn = nn.MSELoss()
 
-    # set up dataset, sampler, and loader
+    # Set up dataset, sampler, and loader
     ds = IterablePatchDataset("eminorhan/neural-pile-rodent", PATCH_SIZE, world_size, rank)
     dl = DPAwareDataLoader(rank, ds, batch_size=BATCH_SIZE)
     dl_iter = iter(dl)
+
+    # Create checkpoint directory on rank 0
+    if rank == 0:
+        os.makedirs(CHECKPOINT_DIR, exist_ok=True)
 
     # ====== training loop ======
     model.train()
     optimizer.zero_grad()
     
     train_step = 0
+
+    # Variable to keep track of training loss during training
+    running_loss = 0.0
+
     while train_step < TRAIN_STEPS:
         batch = next(dl_iter)
 
@@ -531,18 +543,41 @@ if __name__ == "__main__":
         dist.all_reduce(loss, op=dist.ReduceOp.AVG)
         train_step += 1
         
-        if rank == 0 and train_step % 1000 == 0:
-            print(f"Train step: {train_step} | Train Loss: {100.0*loss.item():.6f}")
-            for i in range(4):
-                plt.subplot(2, 4, i+1)
-                plt.imshow(data.view(-1, PATCH_SIZE[0], PATCH_SIZE[1])[i, ...].detach().cpu().numpy(), interpolation='nearest', cmap='gray_r')
-                plt.axis('off')
-                plt.subplot(2, 4, i+5)
-                plt.imshow(x_reconstructed.view(-1, PATCH_SIZE[0], PATCH_SIZE[1])[i, ...].detach().cpu().numpy(), interpolation='nearest', cmap='gray_r')
-                plt.axis('off')
-            plt.tight_layout()    
-            plt.savefig(f"step_{train_step}_fsq.jpeg", bbox_inches='tight')
-            plt.close()
+        # All logging, plotting, and checkpointing is handled by rank 0
+        if rank == 0:
+            # ADDED: Accumulate the averaged loss
+            running_loss += loss.item()
+
+            # --- Logging and Plotting ---
+            if train_step > 0 and train_step % 1000 == 0:
+                
+                # Calculate and print average loss
+                avg_loss_1000_steps = running_loss / 1000
+                print(f"Train step: {train_step} | Avg Train Loss (last 1000): {100.0*avg_loss_1000_steps:.6f}")
+                
+                # Reset running loss after logging
+                running_loss = 0.0
+
+                # Plotting
+                for i in range(4):
+                    plt.subplot(4, 2, 2*i+1)
+                    plt.imshow(data.view(-1, PATCH_SIZE[0], PATCH_SIZE[1])[i, ...].detach().cpu().numpy(), interpolation='nearest', cmap='jet')
+                    plt.axis('off')
+                    plt.subplot(4, 2, 2*i+2)
+                    plt.imshow(x_reconstructed.view(-1, PATCH_SIZE[0], PATCH_SIZE[1])[i, ...].detach().cpu().numpy(), interpolation='nearest', cmap='jet')
+                    plt.axis('off')
+
+                plt.tight_layout()    
+                plt.savefig(f"step_{train_step}_fsq.jpeg", bbox_inches='tight')
+                plt.close()
+
+            # --- Checkpointing ---
+            if train_step > 0 and train_step % CHECKPOINT_INTERVAL == 0:
+                CHECKPOINT_PATH = f"{CHECKPOINT_DIR}/fsq_vae_step_{train_step}.pth"
+                
+                # Save the model's state_dict (from model.module to unwrap DDP)
+                torch.save(model.module.state_dict(), CHECKPOINT_PATH)
+                print(f"Checkpoint saved to {CHECKPOINT_PATH}")
 
     # # ====== compression & decompression eval (after training) ======
     # model.eval()
