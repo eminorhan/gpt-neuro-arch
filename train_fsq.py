@@ -468,6 +468,7 @@ if __name__ == "__main__":
     # Checkpointing
     CHECKPOINT_DIR = 'fsq_ckpts'
     CHECKPOINT_INTERVAL = 30000
+    LOG_INTERVAL = 1000  # logging interval
 
     # Set this path to load weights from a checkpoint before training: e.g., "checkpoints/fsq_vae_step_10000.pth"
     LOAD_CHECKPOINT_PATH = None
@@ -594,11 +595,11 @@ if __name__ == "__main__":
             running_loss += loss.item()
 
             # --- Logging and Plotting ---
-            if train_step > 0 and train_step % 1000 == 0:
+            if train_step > 0 and train_step % LOG_INTERVAL == 0:
                 
                 # Calculate and print average loss
-                avg_loss_1000_steps = running_loss / 1000
-                print(f"Train step: {train_step} | Train Loss (avg over last 1000 steps): {100.0*avg_loss_1000_steps:.6f}")
+                avg_loss_1000_steps = running_loss / LOG_INTERVAL
+                print(f"Train step: {train_step} | Train Loss (avg over last {LOG_INTERVAL} steps): {100.0*avg_loss_1000_steps:.6f}")
                 
                 # Reset running loss after logging
                 running_loss = 0.0
