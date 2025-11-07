@@ -412,6 +412,8 @@ class IterablePatchDataset(IterableDataset, Stateful):
         self.dataset_name = dataset_name
         self.patch_size = patch_size
 
+        self._sample_idx = 0
+
     def __iter__(self):
 
         while True:
@@ -419,23 +421,23 @@ class IterablePatchDataset(IterableDataset, Stateful):
 
                 samples = np.array(samples['spike_counts'])
                 samples = get_patches_column_major(samples, self.patch_size)
-                
+                self._sample_idx += 1
+
                 for sample in samples:
                     yield torch.from_numpy(sample) / 255.0  # normalize     
 
     def _get_data_iter(self):
-        return iter(self._data)
+        if self._sample_idx == len(self._data):
+            return iter([])
+        else:
+            return iter(self._data.skip(self._sample_idx))
 
     def load_state_dict(self, state_dict):
-            assert "data" in state_dict
-            self._data.load_state_dict(state_dict["data"])
+        self._sample_idx = state_dict["sample_idx"]
 
     def state_dict(self):
-        # Save the iterable dataset's state to later efficiently resume from it:
-        # https://huggingface.co/docs/datasets/v3.5.0/en/stream#save-a-dataset-checkpoint-and-resume-iteration
-        _state_dict["data"] = self._data.state_dict()
+        return {"sample_idx": self._sample_idx}
 
-        return _state_dict
 
 class DPAwareDataLoader(StatefulDataLoader, Stateful):
     """
@@ -476,7 +478,7 @@ if __name__ == "__main__":
     optimizer_state_to_load = None
 
     # Data dimension
-    BATCH_SIZE = 8
+    BATCH_SIZE = 4
     PATCH_SIZE = (1, 5)
     INPUT_DIM = np.prod(PATCH_SIZE)
 
@@ -531,10 +533,10 @@ if __name__ == "__main__":
             
             print(f"Rank 0: Successfully loaded full checkpoint from {LOAD_CHECKPOINT_PATH}")
         else:
-            print(f"Rank 0: Warning - Checkpoint path specified but not found, starting from scratch: {LOAD_CHECKPOINT_PATH}")
+            print(f"Rank 0: Checkpoint path specified ({LOAD_CHECKPOINT_PATH}) but not found, starting from scratch ...")
 
     # Barrier to ensure rank 0 finishes loading (if applicable) before other processes continue and DDP is initialized.
-    dist.barrier()
+    dist.barrier(device_ids=[local_rank])
 
     # Broadcast train_step from rank 0 to all other ranks. This ensures all processes are on the same step
     train_step_tensor = torch.tensor([train_step], dtype=torch.long, device=local_rank)
@@ -591,7 +593,7 @@ if __name__ == "__main__":
         
         # All logging, plotting, and checkpointing is handled by rank 0
         if rank == 0:
-            # ADDED: Accumulate the averaged loss
+            # Accumulate the averaged loss
             running_loss += loss.item()
 
             # --- Logging and Plotting ---
