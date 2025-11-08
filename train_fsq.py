@@ -410,6 +410,7 @@ class IterablePatchDataset(IterableDataset, Stateful):
         # NOTE: datasets are pre-shuffled
         self._data = split_dataset_by_node(ds, rank, world_size)
         self.dataset_name = dataset_name
+        self.rank = rank
         self.patch_size = patch_size
 
         self._sample_idx = 0
@@ -425,6 +426,8 @@ class IterablePatchDataset(IterableDataset, Stateful):
 
                 for sample in samples:
                     yield torch.from_numpy(sample) / 255.0  # normalize     
+
+            print(f"Dataset {self.dataset_name} is being re-looped on rank {self.rank}")
 
     def _get_data_iter(self):
         if self._sample_idx == len(self._data):
