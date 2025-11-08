@@ -463,37 +463,48 @@ class DPAwareDataLoader(StatefulDataLoader, Stateful):
         super().load_state_dict(pickle.loads(state_dict[self._rank_id]))
 
 
+# LR Schedule Lambda function
+def get_lr_lambda(current_step, warmup_steps, train_steps):
+    if current_step < warmup_steps:
+        # Linear warm-up
+        return float(current_step) / float(max(1, warmup_steps))
+    # Linear decay
+    return max(0.0, float(train_steps - current_step) / float(max(1, train_steps - warmup_steps)))
+
+
 if __name__ == "__main__":
 
     rank, world_size, local_rank = setup_distributed()
 
     # Checkpointing
     CHECKPOINT_DIR = 'fsq_ckpts'
-    CHECKPOINT_INTERVAL = 30000
+    CHECKPOINT_INTERVAL = 37000
     LOG_INTERVAL = 1000  # logging interval
 
     # Set this path to load weights from a checkpoint before training: e.g., "checkpoints/fsq_vae_step_10000.pth"
-    LOAD_CHECKPOINT_PATH = None
-    # Placeholder for optimizer state
+    LOAD_CHECKPOINT_PATH = f"{CHECKPOINT_DIR}/fsq_vae_step_30000.pth"
+    # Placeholder for optimizer/scheduler state
     optimizer_state_to_load = None
+    scheduler_state_to_load = None
 
-    # Data dimension
+    # Data hyperparams
     BATCH_SIZE = 4
     PATCH_SIZE = (1, 5)
     INPUT_DIM = np.prod(PATCH_SIZE)
 
-    # FSQ levels (e.g., codebook size 64k)
-    levels = [8, 8, 8, 5, 5, 5]
+    # FSQ levels (e.g., codebook size 113k)
+    levels = [8, 8, 7, 7, 6, 6]
     d = len(levels)
 
-    # MLP Hypeparameters
+    # MLP hypeparams
     ENCODER_HIDDEN_DIM = 256
     DECODER_HIDDEN_DIM = 256
     ENCODER_DEPTH = 2
     DECODER_DEPTH = 2
 
-    # Training hyperparameters
+    # Training hyperparams
     TRAIN_STEPS = 100000
+    WARMUP_STEPS = 1000
 
     # Variable to hold the current training step
     train_step = 0
@@ -510,6 +521,8 @@ if __name__ == "__main__":
 
     # Move model to GPU
     model.to(local_rank)
+    if rank == 0:
+        print(f"Model: {model}")
 
     # Set up dataset and loader
     ds = IterablePatchDataset("eminorhan/neural-pile-rodent", PATCH_SIZE, world_size, rank)
@@ -527,10 +540,11 @@ if __name__ == "__main__":
             ds.load_state_dict(checkpoint['dataset_state_dict'])
             dl.load_state_dict(checkpoint['dataloader_state_dict'])
             
-            # Update train_step and store optimizer state for later
+            # Update train_step and store optimizer/scheduler state for later
             train_step = checkpoint['train_step']
             optimizer_state_to_load = checkpoint['optimizer_state_dict']
-            
+            scheduler_state_to_load = checkpoint['scheduler_state_dict']
+
             print(f"Rank 0: Successfully loaded full checkpoint from {LOAD_CHECKPOINT_PATH}")
         else:
             print(f"Rank 0: Checkpoint path specified ({LOAD_CHECKPOINT_PATH}) but not found, starting from scratch ...")
@@ -549,15 +563,23 @@ if __name__ == "__main__":
     # Wrap model in DDP
     model = DDP(model, device_ids=[local_rank], output_device=local_rank)
 
-    # Set up optimizer and loss
+    # Set up optimizer/scheduler and loss
     optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+    lr_lambda = lambda step: get_lr_lambda(step, WARMUP_STEPS, TRAIN_STEPS)
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     loss_fn = nn.MSELoss()
 
     # Load optimizer state if it was loaded from checkpoint
     if optimizer_state_to_load is not None:
         optimizer.load_state_dict(optimizer_state_to_load)
-        if rank == 0:
+        if rank == 0: 
             print("Rank 0: Successfully loaded optimizer state.")
+
+    # Load scheduler state if it was loaded from checkpoint
+    if scheduler_state_to_load is not None:
+        scheduler.load_state_dict(scheduler_state_to_load)
+        if rank == 0: 
+            print("Rank 0: Successfully loaded scheduler state.")
 
     # Create checkpoint directory on rank 0
     if rank == 0:
@@ -584,10 +606,11 @@ if __name__ == "__main__":
         # Compute loss
         loss = loss_fn(x_reconstructed, data)
         
-        # Backward pass and optimizer step
+        # Backward pass and optimizer/scheduler step
         loss.backward()
         optimizer.step()
-        
+        scheduler.step()
+
         dist.all_reduce(loss, op=dist.ReduceOp.AVG)
         train_step += 1
         
@@ -601,7 +624,9 @@ if __name__ == "__main__":
                 
                 # Calculate and print average loss
                 avg_loss_1000_steps = running_loss / LOG_INTERVAL
-                print(f"Train step: {train_step} | Train Loss (avg over last {LOG_INTERVAL} steps): {100.0*avg_loss_1000_steps:.6f}")
+                current_lr = scheduler.get_last_lr()[0]  # get current LR for logging
+
+                print(f"Train step: {train_step} | Train loss (avg over last {LOG_INTERVAL} steps): {100.0*avg_loss_1000_steps:.6f} | Current lr: {current_lr}")
                 
                 # Reset running loss after logging
                 running_loss = 0.0
@@ -623,11 +648,12 @@ if __name__ == "__main__":
             if train_step > 0 and train_step % CHECKPOINT_INTERVAL == 0:
                 CHECKPOINT_PATH = f"{CHECKPOINT_DIR}/fsq_vae_step_{train_step}.pth"
                 
-                # MODIFIED: Save a full checkpoint dictionary
+                # Save a full checkpoint dictionary
                 full_checkpoint = {
                     'train_step': train_step,
                     'model_state_dict': model.module.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
+                    'scheduler_state_dict': scheduler.state_dict(),
                     'dataset_state_dict': ds.state_dict(),
                     'dataloader_state_dict': dl.state_dict(),
                 }
