@@ -8,6 +8,7 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.nn.utils import clip_grad_norm_
 from torch.distributed.checkpoint.stateful import Stateful
 from torchdata.stateful_dataloader import StatefulDataLoader
 
@@ -134,15 +135,44 @@ class FSQ(nn.Module):
         return z_hat_normalized
 
 
+# class MLPBlock(nn.Module):
+#     """A simple MLP block"""
+#     def __init__(self, hidden_dim: int):
+#         super().__init__()
+#         self.norm = nn.LayerNorm(hidden_dim)
+#         self.fc = nn.Linear(hidden_dim, hidden_dim)
+#         self.act = nn.GELU() 
+    
+#     def forward(self, x: torch.Tensor) -> torch.Tensor:
+#         return self.act(self.fc(self.norm(x))) + x
+
+
+# Alternative MLPBlock
 class MLPBlock(nn.Module):
-    """A simple MLP block"""
-    def __init__(self, hidden_dim: int):
+    """
+    A Transformer-style FFN block with pre-normalization.
+    mlp_expansion_factor determines the "bottleneck" size.
+    """
+    def __init__(self, hidden_dim: int, mlp_expansion_factor: int = 4):
         super().__init__()
-        self.fc = nn.Linear(hidden_dim, hidden_dim)
-        self.act = nn.GELU() 
+        mlp_dim = hidden_dim * mlp_expansion_factor
+        
+        self.norm = nn.LayerNorm(hidden_dim)
+        self.fc1 = nn.Linear(hidden_dim, mlp_dim)
+        self.act = nn.GELU()
+        self.fc2 = nn.Linear(mlp_dim, hidden_dim)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.act(self.fc(x)) + x
+        # Pre-normalization
+        h = self.norm(x)
+        
+        # FFN
+        h = self.fc1(h)
+        h = self.act(h)
+        h = self.fc2(h)
+        
+        # Residual connection
+        return h + x
 
 
 class MLPEncoder(nn.Module):
@@ -481,21 +511,21 @@ if __name__ == "__main__":
 
     # Checkpointing
     CHECKPOINT_DIR = 'fsq_ckpts'
-    CHECKPOINT_INTERVAL = 37000
+    CHECKPOINT_INTERVAL = 25000
     LOG_INTERVAL = 1000  # logging interval
 
     # Set this path to load weights from a checkpoint before training: e.g., "checkpoints/fsq_vae_step_10000.pth"
-    LOAD_CHECKPOINT_PATH = f"{CHECKPOINT_DIR}/fsq_vae_step_30000.pth"
+    LOAD_CHECKPOINT_PATH = None  # f"{CHECKPOINT_DIR}/fsq_vae_step_30000.pth"
     # Placeholder for optimizer/scheduler state
     optimizer_state_to_load = None
     scheduler_state_to_load = None
 
     # Data hyperparams
     BATCH_SIZE = 4
-    PATCH_SIZE = (1, 5)
+    PATCH_SIZE = (1, 10)
     INPUT_DIM = np.prod(PATCH_SIZE)
 
-    # FSQ levels (e.g., codebook size 113k)
+    # FSQ levels (e.g., codebook size: ~113k)
     levels = [8, 8, 7, 7, 6, 6]
     d = len(levels)
 
@@ -508,6 +538,7 @@ if __name__ == "__main__":
     # Training hyperparams
     TRAIN_STEPS = 100000
     WARMUP_STEPS = 1000
+    LEARNING_RATE = 3e-4
 
     # Variable to hold the current training step
     train_step = 0
@@ -567,7 +598,7 @@ if __name__ == "__main__":
     model = DDP(model, device_ids=[local_rank], output_device=local_rank)
 
     # Set up optimizer/scheduler and loss
-    optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=LEARNING_RATE)
     lr_lambda = lambda step: get_lr_lambda(step, WARMUP_STEPS, TRAIN_STEPS)
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
     loss_fn = nn.MSELoss()
@@ -611,6 +642,7 @@ if __name__ == "__main__":
         
         # Backward pass and optimizer/scheduler step
         loss.backward()
+        clip_grad_norm_(model.parameters(), max_norm=1.0)
         optimizer.step()
         scheduler.step()
 
