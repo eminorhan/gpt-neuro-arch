@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 
+
 def round_ste(z: torch.Tensor) -> torch.Tensor:
     """
     Round with Straight-Through Estimator (STE).
@@ -135,19 +136,7 @@ class FSQ(nn.Module):
         return z_hat_normalized
 
 
-# class MLPBlock(nn.Module):
-#     """A simple MLP block"""
-#     def __init__(self, hidden_dim: int):
-#         super().__init__()
-#         self.norm = nn.LayerNorm(hidden_dim)
-#         self.fc = nn.Linear(hidden_dim, hidden_dim)
-#         self.act = nn.GELU() 
-    
-#     def forward(self, x: torch.Tensor) -> torch.Tensor:
-#         return self.act(self.fc(self.norm(x))) + x
-
-
-# Alternative MLPBlock
+# Transformer like MLPBlock
 class MLPBlock(nn.Module):
     """
     A Transformer-style FFN block with pre-normalization.
@@ -209,6 +198,7 @@ class MLPEncoder(nn.Module):
         z_e = self.head(x)
         return z_e
 
+
 class MLPDecoder(nn.Module):
     """MLP Decoder for FSQ"""
     def __init__(self, fsq_dim: int, hidden_dim: int, output_dim: int, depth: int):
@@ -228,7 +218,6 @@ class MLPDecoder(nn.Module):
         # Final norm and projection head
         self.norm = nn.LayerNorm(hidden_dim)
         self.head = nn.Linear(hidden_dim, output_dim)
-        self.sigm = nn.Sigmoid()
 
     def forward(self, z_q: torch.Tensor) -> torch.Tensor:
         
@@ -239,9 +228,10 @@ class MLPDecoder(nn.Module):
         x = self.blocks(x)
         x = self.norm(x)
                 
-        # Pass through decoder head        
-        x = self.sigm(self.head(x))
+        # Pass through decoder head     
+        x = self.head(x)
         return x
+
 
 class FSQ_VAE(nn.Module):
     """
@@ -299,7 +289,7 @@ class FSQ_VAE(nn.Module):
         z_q_normalized = self.fsq(z_e)
         
         # Get indices (this is the compressed token indices)
-        indices = self.fsq.codes_to_indexes(z_q_normalized) # (B,)
+        indices = self.fsq.codes_to_indexes(z_q_normalized)  # (B,)
         
         return indices
 
@@ -413,6 +403,7 @@ def get_patches_column_major(data_array: np.ndarray, patch_size: Tuple[int, int]
     # (col 0, row 0), (col 0, row 1), ..., (col 1, row 0), ...
     patches = transposed.reshape(-1, p0*p1)
     patches = np.unique(patches, axis=0)
+    np.random.shuffle(patches)
 
     return patches
 
@@ -455,7 +446,7 @@ class IterablePatchDataset(IterableDataset, Stateful):
                 self._sample_idx += 1
 
                 for sample in samples:
-                    yield torch.from_numpy(sample) / 255.0  # normalize     
+                    yield torch.logit(torch.from_numpy(sample) / 255.0, eps=1e-6)  # normalize + logit   
 
             print(f"Dataset {self.dataset_name} is being re-looped on rank {self.rank}")
 
@@ -510,19 +501,19 @@ if __name__ == "__main__":
     rank, world_size, local_rank = setup_distributed()
 
     # Checkpointing
-    CHECKPOINT_DIR = 'fsq_ckpts'
-    CHECKPOINT_INTERVAL = 25000
+    CHECKPOINT_DIR = 'outputs_logit'
+    CHECKPOINT_INTERVAL = 29000
     LOG_INTERVAL = 1000  # logging interval
 
     # Set this path to load weights from a checkpoint before training: e.g., "checkpoints/fsq_vae_step_10000.pth"
-    LOAD_CHECKPOINT_PATH = None  # f"{CHECKPOINT_DIR}/fsq_vae_step_30000.pth"
+    LOAD_CHECKPOINT_PATH = None  # f"{CHECKPOINT_DIR}/fsq_vae_step_58000.pth"
     # Placeholder for optimizer/scheduler state
     optimizer_state_to_load = None
     scheduler_state_to_load = None
 
     # Data hyperparams
     BATCH_SIZE = 4
-    PATCH_SIZE = (1, 10)
+    PATCH_SIZE = (1, 5)
     INPUT_DIM = np.prod(PATCH_SIZE)
 
     # FSQ levels (e.g., codebook size: ~113k)
@@ -536,8 +527,8 @@ if __name__ == "__main__":
     DECODER_DEPTH = 2
 
     # Training hyperparams
-    TRAIN_STEPS = 100000
-    WARMUP_STEPS = 1000
+    TRAIN_STEPS = 150000
+    WARMUP_STEPS = 1500
     LEARNING_RATE = 3e-4
 
     # Variable to hold the current training step
@@ -661,7 +652,7 @@ if __name__ == "__main__":
                 avg_loss_1000_steps = running_loss / LOG_INTERVAL
                 current_lr = scheduler.get_last_lr()[0]  # get current LR for logging
 
-                print(f"Train step: {train_step} | Train loss (avg over last {LOG_INTERVAL} steps): {100.0*avg_loss_1000_steps:.6f} | Current lr: {current_lr}")
+                print(f"Train step: {train_step} | Train loss (avg over last {LOG_INTERVAL} steps): {1.0*avg_loss_1000_steps:.6f} | Current lr: {current_lr}")
                 
                 # Reset running loss after logging
                 running_loss = 0.0

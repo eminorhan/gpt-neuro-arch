@@ -3,7 +3,9 @@
 .DS_Store
 *.egg-info
 build
+
 outputs
+outputs_fsq
 outputs_eval
 logs
 dist/*
@@ -15,6 +17,10 @@ out
 wandb
 
 torchtitan/datasets/**/*.model
+
+# ckpts
+*.pth
+*.distcp
 
 # temp files
 *.out
