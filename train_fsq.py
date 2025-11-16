@@ -502,18 +502,18 @@ if __name__ == "__main__":
 
     # Checkpointing
     CHECKPOINT_DIR = 'outputs_logit'
-    CHECKPOINT_INTERVAL = 29000
-    LOG_INTERVAL = 1000  # logging interval
+    CHECKPOINT_INTERVAL = 145_000
+    LOG_INTERVAL = 5_000  # logging interval
 
     # Set this path to load weights from a checkpoint before training: e.g., "checkpoints/fsq_vae_step_10000.pth"
-    LOAD_CHECKPOINT_PATH = None  # f"{CHECKPOINT_DIR}/fsq_vae_step_58000.pth"
+    LOAD_CHECKPOINT_PATH = f"{CHECKPOINT_DIR}/fsq_vae_step_145000.pth"
     # Placeholder for optimizer/scheduler state
     optimizer_state_to_load = None
     scheduler_state_to_load = None
 
     # Data hyperparams
     BATCH_SIZE = 4
-    PATCH_SIZE = (1, 5)
+    PATCH_SIZE = (1, 10)
     INPUT_DIM = np.prod(PATCH_SIZE)
 
     # FSQ levels (e.g., codebook size: ~113k)
@@ -527,8 +527,8 @@ if __name__ == "__main__":
     DECODER_DEPTH = 2
 
     # Training hyperparams
-    TRAIN_STEPS = 150000
-    WARMUP_STEPS = 1500
+    TRAIN_STEPS = 1_000_000
+    WARMUP_STEPS = 10_000
     LEARNING_RATE = 3e-4
 
     # Variable to hold the current training step
@@ -671,7 +671,7 @@ if __name__ == "__main__":
                 plt.close()
 
             # --- Checkpointing ---
-            if train_step > 0 and train_step % CHECKPOINT_INTERVAL == 0:
+            if (train_step > 0 and train_step % CHECKPOINT_INTERVAL == 0) or (train_step == TRAIN_STEPS - 1):
                 CHECKPOINT_PATH = f"{CHECKPOINT_DIR}/fsq_vae_step_{train_step}.pth"
                 
                 # Save a full checkpoint dictionary
