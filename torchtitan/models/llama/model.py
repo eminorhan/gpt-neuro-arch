@@ -18,6 +18,7 @@ from torchtitan.models.norms import build_norm
 
 import flash_attn_interface
 
+
 @dataclass
 class ModelArgs:
     dim: int = 4096
@@ -156,9 +157,7 @@ class Attention(nn.Module):
         wk (Linear): Linear transformation for keys.
         wv (Linear): Linear transformation for values.
         wo (Linear): Linear transformation for output.
-
     """
-
     def __init__(self, model_args: ModelArgs):
         super().__init__()
         self.n_heads = model_args.n_heads
@@ -208,7 +207,7 @@ class Attention(nn.Module):
         keys = repeat_kv(xk, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
         values = repeat_kv(xv, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
 
-        # fa-3
+        # FA-3
         output = flash_attn_interface.flash_attn_func(xq, keys, values, causal=True)
         output = output.contiguous().view(bs, seqlen, -1)
 
@@ -229,9 +228,7 @@ class FeedForward(nn.Module):
         w1 (Linear): Linear transformation for the first layer.
         w2 (Linear): Linear transformation for the second layer.
         w3 (Linear): Linear transformation for the third layer.
-
     """
-
     def __init__(
         self,
         dim: int,
@@ -276,9 +273,7 @@ class TransformerBlock(nn.Module):
         layer_id (int): Identifier for the layer.
         attention_norm (RMSNorm): Layer normalization for attention output.
         ffn_norm (RMSNorm): Layer normalization for feedforward output.
-
     """
-
     def __init__(self, layer_id: int, model_args: ModelArgs):
         super().__init__()
         self.n_heads = model_args.n_heads
@@ -340,9 +335,7 @@ class Transformer(nn.Module):
         norm (RMSNorm): Layer normalization for the model output.
         output (ColumnParallelLinear): Linear layer for final output.
         freqs_cis (torch.Tensor): Precomputed cosine and sine frequencies.
-
     """
-
     def __init__(self, model_args: ModelArgs):
         super().__init__()
         self.model_args = model_args

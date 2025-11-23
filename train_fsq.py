@@ -506,7 +506,7 @@ if __name__ == "__main__":
     LOG_INTERVAL = 5_000  # logging interval
 
     # Set this path to load weights from a checkpoint before training: e.g., "checkpoints/fsq_vae_step_10000.pth"
-    LOAD_CHECKPOINT_PATH = f"{CHECKPOINT_DIR}/fsq_vae_step_145000.pth"
+    LOAD_CHECKPOINT_PATH = f"{CHECKPOINT_DIR}/fsq_vae_step_290000.pth"
     # Placeholder for optimizer/scheduler state
     optimizer_state_to_load = None
     scheduler_state_to_load = None

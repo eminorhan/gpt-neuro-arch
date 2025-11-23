@@ -101,13 +101,11 @@ class HuggingFaceDataset(IterableDataset, Stateful):
         # For map-style datasets, resume by skipping to the correct index
         # For iterable-style datasets, the underlying iterator already points to the correct index
         if isinstance(self._data, Dataset):
-            logger.info("Dataset is of type Dataset")
+            # logger.info("Dataset is of type Dataset")
             if self._sample_idx == len(self._data):
                 return iter([])
             else:
                 return iter(self._data.skip(self._sample_idx))
-        else:
-            logger.info("Dataset is of type IterableDataset")
         return iter(self._data)
 
     def load_state_dict(self, state_dict):
@@ -146,7 +144,6 @@ class SyntheticDataset(IterableDataset, Stateful):
         rank (int): rank of the current data parallel process
         infinite (bool): whether to loop infinitely over the dataset
     """
-
     def __init__(
         self,
         seq_len: int = 131072,
