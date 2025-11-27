@@ -18,6 +18,7 @@ save_tb_folder = "tb"
 name = "llama3"
 flavor = "7B"  # 7B / 2B / 870M / 250M
 norm_type = "rmsnorm"  # layernorm / np_layernorm / rmsnorm / fused_rmsnorm
+rope_theta = 1000000
 
 [optimizer]
 name = "AdamW"

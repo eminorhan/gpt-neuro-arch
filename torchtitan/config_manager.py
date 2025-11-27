@@ -173,6 +173,12 @@ class JobConfig:
             default="./torchtitan/datasets/tokenizer/tokenizer.model",
             help="Tokenizer path",
         )
+        self.parser.add_argument(
+            "--model.rope_theta",
+            type=int,
+            default=100000,
+            help="RoPE theta base frequency",
+        )
 
         # optimizer configs
         self.parser.add_argument(

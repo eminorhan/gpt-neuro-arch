@@ -7,8 +7,8 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --time=6:00:00
-#SBATCH --job-name=train_rodent_7B_131k
-#SBATCH --output=train_rodent_7B_131k_%A_%a.out
+#SBATCH --job-name=train_primate_7B_8k
+#SBATCH --output=train_primate_7B_8k_%A_%a.out
 #SBATCH --array=0-4%1
 
 # activate venv
@@ -35,7 +35,7 @@ export GPUS_PER_NODE=4
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 export MASTER_PORT=3442
 
-CONFIG_FILE=${CONFIG_FILE:-"./train_configs/rodent_7B_131k.toml"}
+CONFIG_FILE=${CONFIG_FILE:-"./train_configs/primate_7B_8k.toml"}
 
 srun torchrun --nnodes $SLURM_NNODES --nproc_per_node 4 --max_restarts 1 --node_rank $SLURM_NODEID --rdzv_id 101 --rdzv_backend c10d --rdzv_endpoint "$MASTER_ADDR:$MASTER_PORT" ./train.py --job.config_file ${CONFIG_FILE}
 

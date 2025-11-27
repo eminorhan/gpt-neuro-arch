@@ -108,6 +108,7 @@ def main(job_config: JobConfig):
     model_config.norm_type = job_config.model.norm_type
     model_config.vocab_size = job_config.training.vocab_size
     model_config.max_seq_len = job_config.training.seq_len
+    model_config.rope_theta = job_config.model.rope_theta
 
     with torch.device("meta"):
         model = model_cls.from_model_args(model_config)
