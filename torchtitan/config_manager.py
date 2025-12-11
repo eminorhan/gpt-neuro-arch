@@ -168,12 +168,6 @@ class JobConfig:
             help="Type of layer normalization to use [layernorm, np_layernorm, rmsnorm, fused_rmsnorm]",
         )
         self.parser.add_argument(
-            "--model.tokenizer_path",
-            type=str,
-            default="./torchtitan/datasets/tokenizer/tokenizer.model",
-            help="Tokenizer path",
-        )
-        self.parser.add_argument(
             "--model.rope_theta",
             type=int,
             default=100000,
@@ -375,6 +369,12 @@ class JobConfig:
             default=None,
             help="Random seed to shuffle datasets",
         )
+        self.parser.add_argument(
+            "--training.token_weights",
+            type=str,
+            default=None,
+            help="If specified, will use weighted cross-entropy with the given token weights",
+        )
 
         # checkpointing configs
         self.parser.add_argument(
@@ -525,38 +525,13 @@ class JobConfig:
         )
 
         # communications library settings
-        self.parser.add_argument(
-            "--comm.init_timeout_seconds",
-            type=int,
-            default=3600,
-            help="Timeout for communication operations, during initialization and first train step (default: 1 hour).",
-        )
-        self.parser.add_argument(
-            "--comm.train_timeout_seconds",
-            type=int,
-            default=1200,
-            help="Timeout for communication operations after the first train step -- usually a tighter bound than during initialization.",
-        )
-        self.parser.add_argument(
-            "--comm.trace_buf_size",
-            type=int,
-            default=0,
-            help="Flight recorder ring buffer size, >0 means recording by default, 0 means disabled",
-        )
+        self.parser.add_argument("--comm.init_timeout_seconds", type=int, default=3600, help="Timeout for communication operations, during initialization and first train step (default: 1 hour).")
+        self.parser.add_argument("--comm.train_timeout_seconds", type=int, default=1200, help="Timeout for communication operations after the first train step -- usually a tighter bound than during initialization.")
+        self.parser.add_argument("--comm.trace_buf_size", type=int, default=0, help="Flight recorder ring buffer size, >0 means recording by default, 0 means disabled")
 
         # memory estimation settings
-        self.parser.add_argument(
-            "--memory_estimation.enabled",
-            help="Whether to estimate memory usage for FSDP",
-            action="store_true",
-        )
-
-        self.parser.add_argument(
-            "--memory_estimation.disable_fake_mode",
-            help="Whether to estimate memory under FakeTensorMode",
-            default=False,
-            action="store_true",
-        )
+        self.parser.add_argument("--memory_estimation.enabled", help="Whether to estimate memory usage for FSDP", action="store_true")
+        self.parser.add_argument("--memory_estimation.disable_fake_mode", help="Whether to estimate memory under FakeTensorMode", default=False, action="store_true")
 
     def parse_args(self, args_list: list = sys.argv[1:]):
         args, cmd_args = self.parse_args_from_command_line(args_list)
@@ -593,10 +568,9 @@ class JobConfig:
         return args_dict
 
     def _validate_config(self) -> None:
-        # TODO: Add more mandatory validations
+        # TODO: Add more mandatory validations here
         assert self.model.name
         assert self.model.flavor
-        assert self.model.tokenizer_path
 
     def parse_args_from_command_line(self, args_list) -> Tuple[argparse.Namespace, argparse.Namespace]:
         """

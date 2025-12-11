@@ -123,13 +123,12 @@ def main(job_config: JobConfig):
     num_flop_per_token = utils.get_num_flop_per_token(utils.get_num_params(model, exclude_embedding=True), model_config, job_config.training.seq_len)
     logger.info(f"Model size: {model_param_count} params (including embedding params)")
 
-    # loss function to be shared by Pipeline Parallel and SPMD training
-    # TODO: weights should be Union of None and string (filename storing the weights)
-    import numpy as np
-    weights = np.load("primate_token_weights.npy")
-    weights = torch.from_numpy(weights).float()
+    # loss function (allows weighted loss option)
+    token_weights = torch.load(job_config.training.token_weights) if job_config.training.token_weights else None
+    if torch.distributed.get_rank() == 0:
+        logger.info(f"Using cross-entropy with token weights from {job_config.training.token_weights}: {token_weights}")
     def loss_fn(pred, labels):
-        return torch.nn.functional.cross_entropy(pred.flatten(0, 1), labels.flatten(0, 1), weight=weights.to(pred.device))
+        return torch.nn.functional.cross_entropy(pred.flatten(0, 1), labels.flatten(0, 1), weight=token_weights.to(pred.device) if token_weights is not None else None)
 
     # apply parallelisms and initialization
     if parallel_dims.pp_enabled:
