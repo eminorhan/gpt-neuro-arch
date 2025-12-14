@@ -8,6 +8,7 @@ outputs
 outputs_fsq
 outputs_eval
 logs
+tokenizers
 dist/*
 core
 
@@ -19,6 +20,7 @@ wandb
 torchtitan/datasets/**/*.model
 
 # ckpts
+*.pt
 *.pth
 *.distcp
 

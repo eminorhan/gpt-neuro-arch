@@ -97,6 +97,8 @@ def main(job_config: JobConfig):
         job_config.training.vocab_size,
         dp_degree,
         dp_rank,
+        infinite=True,
+        tokenizer_path=job_config.model.tokenizer_path
     )
 
     # build model (using meta init)

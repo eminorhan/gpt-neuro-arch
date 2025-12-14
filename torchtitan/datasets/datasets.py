@@ -1,6 +1,6 @@
 import pickle
 import numpy as np
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
 from torch.distributed.checkpoint.stateful import Stateful
@@ -20,6 +20,75 @@ _supported_datasets = {
     "willett-churchland-makin": ["eminorhan/willett", "eminorhan/churchland", "eminorhan/makin"],
     "card-willett-churchland-makin": ["eminorhan/card", "eminorhan/willett", "eminorhan/churchland", "eminorhan/makin"]
 }
+
+# some utility functions for tokenization
+def get_patches_column_major(data_array: np.ndarray, patch_size: Tuple[int, int]) -> np.ndarray:
+    """
+    Pads a 2D array and extracts patches in column-major order.
+
+    Given a 2D (n, t) array and a patch size (p0, p1), this function:
+    1. Pads the array with zeros so that n is divisible by p0 and t is divisible by p1.
+    2. Extracts all (p0, p1) patches.
+    3. Returns the patches as a 3D array (num_patches, p0, p1) ordered in column-major fashion.
+
+    Args:
+        data_array: The 2D input NumPy array (e.g., dtype uint8).
+        patch_size: A tuple (p0, p1) specifying the patch dimensions.
+
+    Returns:
+        A 3D NumPy array (num_patches, p0, p1) containing all
+        extracted patches in column-major order.
+    """
+    if data_array.ndim != 2:
+        raise ValueError(f"Input array must be 2-dimensional, but got {data_array.ndim} dimensions.")
+        
+    p0, p1 = patch_size
+    if not (p0 > 0 and p1 > 0):
+        raise ValueError(f"Patch dimensions must be positive, but got ({p0}, {p1}).")
+
+    n, t = data_array.shape
+
+    # 1. Calculate padding
+    pad_n = (p0 - (n % p0)) % p0
+    pad_t = (p1 - (t % p1)) % p1
+
+    # 2. Apply padding if needed
+    if pad_n > 0 or pad_t > 0:
+        padded_array = np.pad(
+            data_array,
+            ((0, pad_n), (0, pad_t)),
+            mode='constant',
+            constant_values=0
+        )
+    else:
+        padded_array = data_array
+    
+    # Get the new, padded dimensions
+    N, T = padded_array.shape
+    
+    # Calculate the number of patches along each dimension
+    num_patches_n = N // p0
+    num_patches_t = T // p1
+
+    # Reshape into a 4D array: (num_patches_n, p0, num_patches_t, p1)
+    reshaped = padded_array.reshape(num_patches_n, p0, num_patches_t, p1)
+
+    # Transpose to: (num_patches_t, num_patches_n, p0, p1)
+    # This groups by patch-column, then patch-row.
+    transposed = reshaped.transpose(2, 0, 1, 3)
+    
+    # Reshape to flatten patch indices (num_patches_t, num_patches_n) into a single dimension, giving (total_patches, p0, p1).
+    # This preserves the column-major order.
+    patches = transposed.reshape(-1, p0, p1)
+
+    return patches, num_patches_n
+
+def load_tokenizer(path):
+    print(f"Loading tokenizer from {path}...")
+    
+    with open(path, 'rb') as f:
+        tokenizer = pickle.load(f)    
+    return tokenizer
 
 class HuggingFaceDataset(IterableDataset, Stateful):
     """PyTorch Representation of the HuggingFace Dataset.
@@ -42,6 +111,7 @@ class HuggingFaceDataset(IterableDataset, Stateful):
         world_size: int = 1,
         rank: int = 0,
         infinite: bool = True,
+        tokenizer_path: Optional[str] = None
     ) -> None:
         # allow user to pass in a (local or HF hub) path to use unsupported datasets
         if dataset_name not in _supported_datasets:
@@ -65,6 +135,7 @@ class HuggingFaceDataset(IterableDataset, Stateful):
         self.seq_len = seq_len
         self.vocab_size = vocab_size
         self.infinite = infinite
+        self.tokenizer = load_tokenizer(tokenizer_path) if tokenizer_path is not None else None
 
         # variables for checkpointing
         self._sample_idx = 0
@@ -75,10 +146,39 @@ class HuggingFaceDataset(IterableDataset, Stateful):
 
         while True:
             for sample in self._get_data_iter():
-                sample = np.array(sample['spike_counts'])
-                sample = np.concatenate((np.full((1, sample.shape[1]), self.vocab_size-1), sample), axis=0)
-                sample = sample.T.flatten().tolist()
-                self._token_buffer.extend(sample)
+                sample = np.array(sample['spike_counts'], dtype=np.uint8)
+
+                if self.tokenizer is not None:
+                    # Logic for tokenized data
+                    # 1. Unpack both return values
+                    patchified_sample, num_patches_n = get_patches_column_major(sample, self.tokenizer["patch_size"])
+                    
+                    # 2. Tokenize (results in a flat list of ints)
+                    token_sequence = [self.tokenizer["index_map"].get(patch.tobytes(), 0) for patch in patchified_sample]
+
+                    # 3. Vectorized insertion of special tokens
+                    # Convert to numpy to use reshaping tricks
+                    token_arr = np.array(token_sequence)
+                    
+                    # Reshape to (Time_Steps, Spatial_Patches_Per_Step)
+                    # We use -1 for the time dimension to let numpy infer it automatically
+                    token_arr = token_arr.reshape(-1, num_patches_n)
+
+                    # Create the separator column (one per time step)
+                    sep_token = self.vocab_size - 1
+                    sep_col = np.full((token_arr.shape[0], 1), sep_token, dtype=token_arr.dtype)
+
+                    # Stack horizontally: [SEP, Token1, Token2, ...]
+                    token_arr = np.hstack((sep_col, token_arr))
+
+                    # 4. Flatten back to a list and extend buffer
+                    self._token_buffer.extend(token_arr.flatten().tolist())
+                else:
+                    # Logic for non-tokenized data
+                    sample = np.concatenate((np.full((1, sample.shape[1]), self.vocab_size-1), sample), axis=0)
+                    sample = sample.T.flatten().tolist()
+                    self._token_buffer.extend(sample)
+
                 self._sample_idx += 1
 
                 while len(self._token_buffer) >= max_buffer_token_len:
@@ -257,6 +357,7 @@ def build_data_loader(
     world_size,
     rank,
     infinite: bool = True,
+    tokenizer_path: Optional[str] = None
 ) -> DPAwareDataLoader:
     """
     Builds a data loader for distributed training.
@@ -295,6 +396,7 @@ def build_data_loader(
             world_size=world_size,
             rank=rank,
             infinite=infinite,
+            tokenizer_path=tokenizer_path
         )
 
     return DPAwareDataLoader(rank, dataset, batch_size=batch_size)

@@ -173,6 +173,12 @@ class JobConfig:
             default=100000,
             help="RoPE theta base frequency",
         )
+        self.parser.add_argument(
+            "--model.tokenizer_path",
+            type=str,
+            default=None,
+            help="Path to tokenizer (optional)",
+        )
 
         # optimizer configs
         self.parser.add_argument(

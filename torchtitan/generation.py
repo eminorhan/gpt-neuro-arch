@@ -5,7 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 from typing import Optional
-
+import logging
 import torch
 
 
@@ -54,6 +54,7 @@ def generate(
     input_ids: torch.Tensor,
     n_neurons: int,
     bos_token: int,
+    logger: logging.Logger,    
     *,
     max_new_tokens: int,
     temperature: float = 1.0,
@@ -84,5 +85,7 @@ def generate(
             )
 
         generated_tokens = torch.cat([generated_tokens, next_token], dim=1)
-
+        if i % 1000 == 0:
+            logger.info(f"Step {i} of {max_new_tokens}")
+            
     return generated_tokens

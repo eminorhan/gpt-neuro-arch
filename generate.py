@@ -40,6 +40,28 @@ sys.path.append(str(wd))
 
 from torchtitan.generation import generate
 
+import matplotlib.pyplot as plt
+
+def plot_data(data):
+    """Plots data onto an Axes, adding labels only if specified."""
+    plt.imshow(data, interpolation='nearest', aspect='auto', cmap='gray_r')
+
+    # Configure plot limits and ticks
+    plt.xlim([-1, data.shape[-1] + 1])
+    plt.ylim([-1, data.shape[0]])
+    plt.xticks([0, data.shape[-1] - 1])
+    plt.yticks([0, data.shape[0] - 1])
+    # The y-tick labels ('100', '1') will only show on the first plot due to sharey=True
+    plt.tight_layout()
+    plt.savefig('samples.jpeg', bbox_inches='tight', dpi=300)
+    # # Customize spines
+    # ax.spines["right"].set_visible(False)
+    # ax.spines["top"].set_visible(False)
+    
+    # # 1. Conditionally add axis labels based on the 'add_labels' flag
+    # if add_labels:
+    #     ax.set_xlabel('Time (seconds)', fontsize=9)
+    #     ax.set_ylabel('Neurons', fontsize=9)
 
 def apply_tp_minus_sp(model: nn.Module, tp_mesh: DeviceMesh):
     parallelize_module(
@@ -119,7 +141,7 @@ def test_generate(
         parallel_dims = ParallelDims(
             dp_replicate=1,
             dp_shard=-1,
-            tp=8,
+            tp=4,
             pp=1,
             world_size=world_size,
             enable_loss_parallel=False,
@@ -149,7 +171,7 @@ def test_generate(
     logger.info(f"GPU memory usage for model: {gpu_mem_stats.max_reserved_gib:.2f}GiB ({gpu_mem_stats.max_reserved_pct:.2f}%)")
 
     # set up input
-    ds = load_dataset("eminorhan/neural-bench-primate", split="train")
+    ds = load_dataset("eminorhan/neural-pile-primate", split="train")
     logger.info(f"Test dataset loaded (size: {len(ds)})")
 
     data_row = ds[data_idx]
@@ -177,16 +199,18 @@ def test_generate(
 
     # generate
     t0 = time.monotonic()
-    responses = generate(
-        model,
-        input_ids,
-        n_neurons,
-        bos_token,
-        temperature=temperature,
-        max_new_tokens=max_new_tokens,
-        top_k=top_k,
-        seed=seed,
-    )
+    with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
+        responses = generate(
+            model,
+            input_ids,
+            n_neurons,
+            bos_token,
+            logger,
+            temperature=temperature,
+            max_new_tokens=max_new_tokens,
+            top_k=top_k,
+            seed=seed,
+        )
     t1 = time.monotonic()
     elapsed_sec = t1 - t0
 
@@ -216,6 +240,14 @@ def test_generate(
 
             logger.info(f"\n{inp_tok} - {out_tok}\n")
             np.savez(f"rodent_test_sample_{data_idx}_{ctx_t}_{gen_t}.npz", prompt=inp_tok, gen=out_tok, gt=gt)
+
+            nn = n_neurons + 1
+            prompt = np.array(inp_tok).reshape(-1, nn).T
+            gen = np.array(out_tok).reshape(-1, nn).T
+            out = np.concatenate((prompt, gen), axis=1)
+            out = out[1:, :]
+            plot_data(out)
+
 
         gpu_mem_stats = gpu_memory_monitor.get_peak_stats()
         output_data["metadata"] = {
@@ -248,9 +280,9 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1, help="Number of samples to run in batch")
     parser.add_argument("--top_k", type=int, help="Prune to select from top_k probabilities. Optional")
     parser.add_argument("--seed", type=int, help="Random seed for reproducibility")
-    parser.add_argument("--data_idx", type=int, default=2, help="Idx of data prompt")
-    parser.add_argument("--ctx_t", type=int, default=10, help="Duration of prompt context (time bins)")
-    parser.add_argument("--gen_t", type=int, default=10, help="Duration of generated sample (time bins)")
+    parser.add_argument("--data_idx", type=int, default=12, help="Idx of data prompt")
+    parser.add_argument("--ctx_t", type=int, default=16, help="Duration of prompt context (time bins)")
+    parser.add_argument("--gen_t", type=int, default=16, help="Duration of generated sample (time bins)")
     parser.add_argument("--out", action="store_true", default=False, help="If specified, prints the report to stdout. Defaults to no output.")
 
     args = parser.parse_args()

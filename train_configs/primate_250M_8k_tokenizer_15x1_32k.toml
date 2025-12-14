@@ -1,0 +1,58 @@
+# torchtitan Config.toml
+
+[job]
+dump_folder = "./outputs/primate_250M_8k_tokenizer_15x1_32k"
+description = "primate_250M_8k_tokenizer_15x1_32k training"
+
+[profiling]
+enable_profiling = false
+save_traces_folder = "profile_trace"
+profile_freq = 10
+
+[metrics]
+log_freq = 4500
+enable_tensorboard = false
+save_tb_folder = "tb"
+
+[model]
+name = "llama3"
+flavor = "250M"  # 7B / 2B / 870M / 250M
+norm_type = "rmsnorm"  # layernorm / np_layernorm / rmsnorm / fused_rmsnorm
+rope_theta = 10000
+tokenizer_path = "./tokenizers/tokenizer_primate_15x1_32k.pkl"
+
+[optimizer]
+name = "AdamW"
+lr = 3e-4
+
+[training]
+batch_size = 16
+seq_len = 8192
+vocab_size = 32000
+warmup_steps = 1000  # lr scheduler warm up
+max_norm = 1.0  # grad norm clipping
+steps = 100000  # number of training steps
+data_parallel_replicate_degree = 1
+data_parallel_shard_degree = -1
+tensor_parallel_degree = 1
+compile = false
+dataset = "primate"
+
+[experimental]
+pipeline_parallel_degree = 1
+
+[checkpoint]
+enable_checkpoint = true
+folder = "checkpoint"
+interval_type = "steps"
+interval = 4500
+model_weights_only = false
+export_dtype = "bfloat16"
+async_mode = "async"  # ["disabled", "async", "async_with_pinned_mem"]
+
+[activation_checkpoint]
+mode = 'full'  # ['none', 'selective', 'full']
+selective_ac_option = 'op'  # 'int' = ac every positive int layer or 'op', ac based on ops policy
+
+[float8]
+enable_float8_linear = false
