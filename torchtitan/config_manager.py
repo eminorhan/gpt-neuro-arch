@@ -381,6 +381,12 @@ class JobConfig:
             default=None,
             help="If specified, will use weighted cross-entropy with the given token weights",
         )
+        self.parser.add_argument(
+            "--training.n_fixed",
+            type=int,
+            default=None,
+            help="Standardize number of neurons (optional)",
+        )
 
         # checkpointing configs
         self.parser.add_argument(

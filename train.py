@@ -98,7 +98,8 @@ def main(job_config: JobConfig):
         dp_degree,
         dp_rank,
         infinite=True,
-        tokenizer_path=job_config.model.tokenizer_path
+        tokenizer_path=job_config.model.tokenizer_path,
+        n_fixed=job_config.training.n_fixed
     )
 
     # build model (using meta init)

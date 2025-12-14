@@ -90,6 +90,35 @@ def load_tokenizer(path):
         tokenizer = pickle.load(f)    
     return tokenizer
 
+def standardize_neuron_dim(sample, n_fixed):
+    """
+    Adjusts the neuron dimension (rows) of the sample to exactly n_fixed.
+    
+    Args:
+        sample (np.ndarray): Shape (n, t)
+        n_fixed (int): Target number of neurons (rows)
+        
+    Returns:
+        np.ndarray: Shape (n_fixed, t)
+    """
+    n, t = sample.shape
+    
+    if n == n_fixed:
+        return sample
+    
+    # Case 1: n < n_fixed (Pad with contiguous rows from the start)
+    if n < n_fixed:
+        # Calculate how many times we need to repeat the array to exceed n_fixed
+        repeats = (n_fixed // n) + 1
+        extended_sample = np.tile(sample, (repeats, 1))
+        return extended_sample[:n_fixed, :]
+        
+    # Case 2: n > n_fixed (Sample a random contiguous block)
+    else:
+        max_start_idx = n - n_fixed
+        start_idx = np.random.randint(0, max_start_idx + 1)
+        return sample[start_idx : start_idx + n_fixed, :]
+
 class HuggingFaceDataset(IterableDataset, Stateful):
     """PyTorch Representation of the HuggingFace Dataset.
 
@@ -100,7 +129,6 @@ class HuggingFaceDataset(IterableDataset, Stateful):
         world_size (int): number of data parallel processes participating in training
         rank (int): rank of the current data parallel process
         infinite (bool): whether to loop infinitely over the dataset
-
     """
     def __init__(
         self,
@@ -111,7 +139,8 @@ class HuggingFaceDataset(IterableDataset, Stateful):
         world_size: int = 1,
         rank: int = 0,
         infinite: bool = True,
-        tokenizer_path: Optional[str] = None
+        tokenizer_path: Optional[str] = None,
+        n_fixed: Optional[int] = None
     ) -> None:
         # allow user to pass in a (local or HF hub) path to use unsupported datasets
         if dataset_name not in _supported_datasets:
@@ -136,6 +165,7 @@ class HuggingFaceDataset(IterableDataset, Stateful):
         self.vocab_size = vocab_size
         self.infinite = infinite
         self.tokenizer = load_tokenizer(tokenizer_path) if tokenizer_path is not None else None
+        self.n_fixed = n_fixed
 
         # variables for checkpointing
         self._sample_idx = 0
@@ -147,6 +177,10 @@ class HuggingFaceDataset(IterableDataset, Stateful):
         while True:
             for sample in self._get_data_iter():
                 sample = np.array(sample['spike_counts'], dtype=np.uint8)
+
+                # Optionally, standardize neuron number
+                if self.n_fixed is not None:
+                    sample = standardize_neuron_dim(sample, self.n_fixed)
 
                 if self.tokenizer is not None:
                     # Logic for tokenized data
@@ -357,7 +391,8 @@ def build_data_loader(
     world_size,
     rank,
     infinite: bool = True,
-    tokenizer_path: Optional[str] = None
+    tokenizer_path: Optional[str] = None,
+    n_fixed: Optional[int] = None
 ) -> DPAwareDataLoader:
     """
     Builds a data loader for distributed training.
@@ -396,7 +431,8 @@ def build_data_loader(
             world_size=world_size,
             rank=rank,
             infinite=infinite,
-            tokenizer_path=tokenizer_path
+            tokenizer_path=tokenizer_path,
+            n_fixed=n_fixed
         )
 
     return DPAwareDataLoader(rank, dataset, batch_size=batch_size)
