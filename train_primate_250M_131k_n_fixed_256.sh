@@ -9,7 +9,7 @@
 #SBATCH --time=6:00:00
 #SBATCH --job-name=train_primate_250M_131k_n_fixed_256
 #SBATCH --output=train_primate_250M_131k_n_fixed_256_%A_%a.out
-#SBATCH --array=0
+#SBATCH --array=0-2%1
 
 # activate venv
 source /lustre/blizzard/stf218/scratch/emin/blizzardvenv/bin/activate
