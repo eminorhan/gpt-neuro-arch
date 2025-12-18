@@ -48,7 +48,7 @@ interval_type = "steps"
 interval = 800
 model_weights_only = false
 export_dtype = "bfloat16"
-async_mode = "async"  # ["disabled", "async", "async_with_pinned_mem"]
+async_mode = "disabled"  # ["disabled", "async", "async_with_pinned_mem"]
 
 [activation_checkpoint]
 mode = 'full'  # ['none', 'selective', 'full']
