@@ -10,7 +10,7 @@ save_traces_folder = "profile_trace"
 profile_freq = 10
 
 [metrics]
-log_freq = 3600
+log_freq = 6400
 enable_tensorboard = false
 save_tb_folder = "tb"
 
@@ -46,7 +46,7 @@ pipeline_parallel_degree = 1
 enable_checkpoint = true
 folder = "checkpoint"
 interval_type = "steps"
-interval = 3600
+interval = 6400
 model_weights_only = false
 export_dtype = "bfloat16"
 async_mode = "disabled"  # ["disabled", "async", "async_with_pinned_mem"]

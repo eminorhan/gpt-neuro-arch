@@ -6,10 +6,10 @@
 #SBATCH --cpus-per-task=288
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
-#SBATCH --time=6:00:00
+#SBATCH --time=5:00:00
 #SBATCH --job-name=train_primate_870M_8k_n_fixed_256_tokenizer_1x15_32k
 #SBATCH --output=train_primate_870M_8k_n_fixed_256_tokenizer_1x15_32k_%A_%a.out
-#SBATCH --array=0-1%1
+#SBATCH --array=0
 
 # activate venv
 source /lustre/blizzard/stf218/scratch/emin/blizzardvenv/bin/activate

@@ -23,6 +23,7 @@ torchtitan/datasets/**/*.model
 *.pt
 *.pth
 *.distcp
+*.npz
 
 # temp files
 *.out

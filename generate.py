@@ -63,6 +63,35 @@ def plot_data(data):
     #     ax.set_xlabel('Time (seconds)', fontsize=9)
     #     ax.set_ylabel('Neurons', fontsize=9)
 
+def standardize_neuron_dim(sample, n_fixed):
+    """
+    Adjusts the neuron dimension (rows) of the sample to exactly n_fixed.
+    
+    Args:
+        sample (np.ndarray): Shape (n, t)
+        n_fixed (int): Target number of neurons (rows)
+        
+    Returns:
+        np.ndarray: Shape (n_fixed, t)
+    """
+    n, t = sample.shape
+    
+    if n == n_fixed:
+        return sample
+    
+    # Case 1: n < n_fixed (Pad with contiguous rows from the start)
+    if n < n_fixed:
+        # Calculate how many times we need to repeat the array to exceed n_fixed
+        repeats = (n_fixed // n) + 1
+        extended_sample = np.tile(sample, (repeats, 1))
+        return extended_sample[:n_fixed, :]
+        
+    # Case 2: n > n_fixed (Sample a random contiguous block)
+    else:
+        max_start_idx = n - n_fixed
+        start_idx = np.random.randint(0, max_start_idx + 1)
+        return sample[start_idx : start_idx + n_fixed, :]
+
 def apply_tp_minus_sp(model: nn.Module, tp_mesh: DeviceMesh):
     parallelize_module(
         model,
