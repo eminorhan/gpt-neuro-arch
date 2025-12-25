@@ -6,7 +6,7 @@ import torch
 # ds = load_dataset("eminorhan/neural-pile-primate", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
 # ds = load_dataset("eminorhan/neural-pile-primate", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
 # ds = load_dataset("eminorhan/xiao", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
-# ds = load_dataset("eminorhan/willett", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
+ds = load_dataset("eminorhan/willett", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
 # ds = load_dataset("eminorhan/churchland", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
 # ds = load_dataset("eminorhan/neupane-entorhinal", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
 # ds = load_dataset("eminorhan/kim", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
@@ -15,7 +15,7 @@ import torch
 # ds = load_dataset("eminorhan/perich", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
 # ds = load_dataset("eminorhan/makin", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
 # ds = load_dataset("eminorhan/h2", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
-ds = load_dataset("eminorhan/xiao_1ms", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
+# ds = load_dataset("eminorhan/xiao_1ms", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
 
 print(f"Number of data rows: {len(ds['train'])}")
 sp = np.array(ds['train'][0]['spike_counts'])

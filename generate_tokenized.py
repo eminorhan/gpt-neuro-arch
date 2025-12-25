@@ -240,6 +240,9 @@ def test_generate(
     # --- DATA PREPARATION ---
     ds = load_dataset("eminorhan/neural-pile-primate", split="train")
     data_row = ds[data_idx]
+    source_dataset = data_row["source_dataset"]
+    logger.info(f"Sample source dataset: {source_dataset}")
+
     raw_sample = np.array(data_row["spike_counts"], dtype=np.uint8)
     
     # 1. Standardize Neurons
@@ -410,7 +413,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--top_k", type=int, help="Prune top_k")
     parser.add_argument("--seed", type=int)
-    parser.add_argument("--data_idx", type=int, default=16)
+    parser.add_argument("--data_idx", type=int, default=18)
     parser.add_argument("--ctx_t", type=int, default=36, help="Context time steps")
     parser.add_argument("--gen_t", type=int, default=4, help="Generation time steps")
     parser.add_argument("--out", action="store_true", default=False)

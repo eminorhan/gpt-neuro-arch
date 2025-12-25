@@ -30,6 +30,8 @@ class ModelArgs:
     ffn_dim_multiplier: Optional[float] = None
     norm_eps: float = 1e-5
     rope_theta: float = 10000
+    resonant_period: int = 257
+    resonant_ratio: float = 0.1
     max_seq_len: int = 2048
     # If `True`, then each transformer block init uses its layer ID, and if `False`, each uses the total number of transformer blocks
     depth_init: bool = True
@@ -56,6 +58,60 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> torch.Te
     t = torch.arange(end, device=freqs.device)
     freqs = torch.outer(t, freqs).float()
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
+    return freqs_cis
+
+
+def precompute_freqs_cis_resonant(dim: int, end: int, theta: float = 500000.0, resonant_period: int = 257, resonant_ratio: float = 0.1) -> torch.Tensor:
+    """
+    Precompute the frequency tensor for complex exponentials (cis).
+    
+    Includes a 'Resonant Frequency' modification: A portion of the dimensions are
+    forced to have a wavelength of exactly 'resonant_period', allowing perfect 
+    rotational alignment at that interval.
+
+    Args:
+        dim (int): Dimension of the frequency tensor.
+        end (int): End index for precomputing frequencies.
+        theta (float, optional): Scaling factor for standard frequencies. Defaults to 500000.0.
+        resonant_period (int, optional): The target period to capture (e.g., 256).
+        resonant_ratio (float, optional): Fraction of dimensions (0.0 to 1.0) to dedicate to the resonant frequency. Defaults to 0.1 (10%).
+
+    Returns:
+        torch.Tensor: Precomputed frequency tensor with complex exponentials.
+    """
+    # 1. Calculate standard RoPE frequencies for ALL dimensions first
+    # formula: theta ^ (-2i/d)
+    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
+
+    # 2. Resonant Frequency Injection
+    if resonant_period > 0 and resonant_ratio > 0:
+        # Calculate how many pairs of dimensions we want to override
+        # We divide by 2 because 'freqs' represents pairs of dimensions (complex components)
+        n_feat_half = freqs.shape[0]
+        n_resonant = int(n_feat_half * resonant_ratio)
+        
+        if n_resonant > 0:
+            # The target frequency is 2*pi / period.
+            # In RoPE 'freqs' is the angular velocity w. 
+            # We want w * period = 2*pi * k (where k is integer rotations).
+            # The simplest is k=1 (one full rotation every 256 steps).
+            target_freq = 2 * torch.pi / resonant_period
+            
+            # Create a list of harmonics if we have space (1x, 2x, 4x speed)
+            # or just repeat the base frequency for robustness.
+            # Here we simply enforce the base period on the highest-frequency dimensions
+            # (which are usually the last indices in the standard implementation).
+            
+            # Overwrite the last 'n_resonant' frequencies
+            freqs[-n_resonant:] = target_freq
+
+    # 3. Create the grid (Outer Product)
+    t = torch.arange(end, device=freqs.device)
+    freqs = torch.outer(t, freqs).float()  # shape: (end, dim//2)
+    
+    # 4. Convert to Complex Polar form
+    freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
+    
     return freqs_cis
 
 
@@ -403,6 +459,17 @@ class Transformer(nn.Module):
             # (use 2x max sequence length to be safe)
             self.model_args.max_seq_len * 2,
             self.model_args.rope_theta,
+        )
+
+    def _precompute_freqs_cis_resonant(self) -> torch.Tensor:
+        return precompute_freqs_cis_resonant(
+            self.model_args.dim // self.model_args.n_heads,
+            # Need to compute until at least the max token limit for generation
+            # (use 2x max sequence length to be safe)
+            self.model_args.max_seq_len * 2,
+            self.model_args.rope_theta,
+            self.model_args.resonant_period,
+            self.model_args.resonant_ratio
         )
 
     def forward(self, tokens: torch.Tensor):

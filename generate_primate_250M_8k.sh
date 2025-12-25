@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=288
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
-#SBATCH --time=0:10:00
+#SBATCH --time=0:05:00
 #SBATCH --job-name=generate_primate_250M_8k
 #SBATCH --output=generate_primate_250M_8k_weighted_%A_%a.out
 #SBATCH --array=0
