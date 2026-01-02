@@ -7,8 +7,8 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --time=00:10:00
-#SBATCH --job-name=generate_primate_250M_8k
-#SBATCH --output=generate_primate_250M_8k_weighted_%A_%a.out
+#SBATCH --job-name=generate_tokenized
+#SBATCH --output=generate_tokenized_%A_%a.out
 #SBATCH --array=0
 
 # activate venv
@@ -38,6 +38,6 @@ export MASTER_PORT=3442
 
 CONFIG_FILE=${CONFIG_FILE:-"./train_configs/primate_2B_8k_n_fixed_256_tokenizer_1x15_32k.toml"}
 
-srun torchrun --nnodes $SLURM_NNODES --nproc_per_node 4 --max_restarts 1 --node_rank $SLURM_NODEID --rdzv_id 101 --rdzv_backend c10d --rdzv_endpoint "$MASTER_ADDR:$MASTER_PORT" ./generate_tokenized.py --config ${CONFIG_FILE} --tokenizer_path "tokenizers/tokenizer_primate_1x15_32k.pkl" --ckpt "outputs/primate_2B_8k_n_fixed_256_tokenizer_1x15_32k/checkpoint/step-70200"
+srun torchrun --nnodes $SLURM_NNODES --nproc_per_node 4 --max_restarts 1 --node_rank $SLURM_NODEID --rdzv_id 101 --rdzv_backend c10d --rdzv_endpoint "$MASTER_ADDR:$MASTER_PORT" ./generate_tokenized.py --config ${CONFIG_FILE} --tokenizer_path "tokenizers/tokenizer_primate_1x15_32k.pkl" --ckpt "outputs/primate_2B_8k_n_fixed_256_tokenizer_1x15_32k/checkpoint/step-72800"
 
 echo "Done"

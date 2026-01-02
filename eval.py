@@ -81,7 +81,7 @@ def main(job_config: JobConfig):
         job_config=job_config,
     )
 
-    # IMPORTANT: Cleanup 'None' entries from the states dict.
+    # Clean up None entries from the states dict.
     # dcp.load() will error if it tries to load checkpoint data into a None target.
     keys_to_remove = ["dataloader", "optimizer", "lr_scheduler"]
     for key in keys_to_remove:
