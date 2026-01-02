@@ -1,8 +1,8 @@
 # torchtitan Config.toml
 
 [job]
-dump_folder = "./outputs/primate_870M_8k_n_fixed_256_tokenizer_1x15_32k"
-description = "primate_870M_8k_n_fixed_256_tokenizer_1x15_32k training"
+dump_folder = "./outputs/primate_7B_8k_n_fixed_256_tokenizer_1x15_32k"
+description = "primate_7B_8k_n_fixed_256_tokenizer_1x15_32k training"
 
 [profiling]
 enable_profiling = false
@@ -10,13 +10,13 @@ save_traces_folder = "profile_trace"
 profile_freq = 10
 
 [metrics]
-log_freq = 3600
+log_freq = 1800
 enable_tensorboard = false
 save_tb_folder = "tb"
 
 [model]
 name = "llama3"
-flavor = "870M"  # 7B / 2B / 870M / 250M
+flavor = "7B"  # 7B / 2B / 870M / 250M
 norm_type = "rmsnorm"  # layernorm / np_layernorm / rmsnorm / fused_rmsnorm
 rope_theta = 10000
 tokenizer_path = "./tokenizers/tokenizer_primate_1x15_32k.pkl"
@@ -26,7 +26,7 @@ name = "AdamW"
 lr = 3e-4
 
 [training]
-batch_size = 16
+batch_size = 8
 seq_len = 8192
 vocab_size = 32000
 warmup_steps = 1000  # lr scheduler warm up
@@ -46,7 +46,7 @@ pipeline_parallel_degree = 1
 enable_checkpoint = true
 folder = "checkpoint"
 interval_type = "steps"
-interval = 3600
+interval = 1800
 model_weights_only = false
 export_dtype = "bfloat16"
 async_mode = "disabled"  # ["disabled", "async", "async_with_pinned_mem"]

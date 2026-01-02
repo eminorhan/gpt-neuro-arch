@@ -125,7 +125,7 @@ def plot_data(data, filename='samples.jpeg'):
     plt.figure(figsize=(10, 6))
     plt.imshow(data, interpolation='nearest', aspect='auto', cmap='gray_r')
     plt.xlim([-1, data.shape[-1] + 1])
-    plt.ylim([-1, data.shape[0]])
+    plt.ylim([-1, data.shape[0] + 1])
     plt.xticks([0, data.shape[-1] - 1])
     plt.yticks([0, data.shape[0] - 1])
     plt.tight_layout()
@@ -297,7 +297,7 @@ def test_generate(
         responses = generate(
             model,
             input_ids,
-            tokens_per_step, # passing tokens_per_step as "n_neurons" proxy if used for shaping
+            tokens_per_step - 1, # passing tokens_per_step-1 as "n_neurons" proxy if used for shaping
             sep_token, # acting as bos_token
             logger,
             temperature=temperature,
@@ -329,6 +329,7 @@ def test_generate(
                 "output_tok": out_tok,
             }
             output_data["responses"].append(_data)
+            logger.info(f"\n{inp_tok} - {out_tok}\n")
 
             # --- DETOKENIZATION & PLOTTING ---
             
@@ -351,9 +352,11 @@ def test_generate(
                 if idx in inv_index_map:
                     b_data = inv_index_map[idx]
                     patch = np.frombuffer(b_data, dtype=sample.dtype).reshape(patch_size)
+                    logger.info(f"token idx: {idx} - patch: {patch}")
                 else:
                     # Fallback for unknown tokens (shouldn't happen with valid sampling)
                     patch = np.zeros(patch_size, dtype=sample.dtype)
+                    logger.info(f"Fallback to zeros...")
                 reconstructed_patches.append(patch)
             
             reconstructed_patches = np.array(reconstructed_patches)
@@ -393,11 +396,8 @@ def test_generate(
             logger.info(f"Saving plot to {plot_name}")
             plot_data(final_image, filename=plot_name)
 
-            np.savez(f"rodent_test_sample_{data_idx}_{ctx_t}_{gen_t}.npz", 
-                     prompt_tok=inp_tok, 
-                     gen_tok=out_tok, 
-                     reconstructed_data=final_image
-                     )
+            # # Save
+            # np.savez(f"rodent_test_sample_{data_idx}_{ctx_t}_{gen_t}.npz", prompt_tok=inp_tok, gen_tok=out_tok, reconstructed_data=final_image)
 
         if args.out:
             print(json.dumps(output_data, indent=4, default=str))
@@ -413,8 +413,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--top_k", type=int, help="Prune top_k")
     parser.add_argument("--seed", type=int)
-    parser.add_argument("--data_idx", type=int, default=18)
-    parser.add_argument("--ctx_t", type=int, default=36, help="Context time steps")
+    parser.add_argument("--data_idx", type=int, default=14)
+    parser.add_argument("--ctx_t", type=int, default=27, help="Context time steps")
     parser.add_argument("--gen_t", type=int, default=4, help="Generation time steps")
     parser.add_argument("--out", action="store_true", default=False)
 

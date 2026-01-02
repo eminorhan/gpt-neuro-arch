@@ -39,6 +39,15 @@ llama3_configs = {
         multiple_of=1024,
         rope_theta=1_000_000,
     ),
+    "5B": ModelArgs(
+        dim=4096,
+        n_layers=16,
+        n_heads=32,
+        n_kv_heads=8,
+        ffn_dim_multiplier=1.3,
+        multiple_of=1024,
+        rope_theta=1_000_000,
+    ),
     "7B": ModelArgs(
         dim=4096,
         n_layers=32,
