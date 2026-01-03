@@ -9,7 +9,7 @@
 #SBATCH --time=6:00:00
 #SBATCH --job-name=train_primate_2B_8k_n_fixed_256_tokenizer_1x15_32k
 #SBATCH --output=train_primate_2B_8k_n_fixed_256_tokenizer_1x15_32k_%A_%a.out
-#SBATCH --array=0-9%1
+#SBATCH --array=0-7%1
 
 # activate venv
 source /lustre/blizzard/stf218/scratch/emin/blizzardvenv/bin/activate

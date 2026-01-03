@@ -1,13 +1,13 @@
 ### Large-scale distributed training of autoregressive generative models on *the Neural Pile*
 
-This is a copy of the [`gpt-neuro`](https://github.com/eminorhan/gpt-neuro) repository on Arch, an HPE Cray EX254n system with 168 GH200 superchips. Currently the following models can be trained with this repository:
+This is a copy of the [`gpt-neuro`](https://github.com/eminorhan/gpt-neuro) repository on Arch, an HPE Cray EX254n system with 168 GH200 superchips. Currently, the following models can be trained with this repository:
 
 * 250M, 870M, 2B, and 7B parameter models.
-* Models with tokenized data (pass `job_config.model.tokenizer_path`) 
-* Models with weighted loss (pass `job_config.training.token_weights`)
-* Models with a fixed number of neurons *n* (pass `job_config.training.n_fixed`)
+* Models with tokenized data (set `job_config.model.tokenizer_path` in the training config file) 
+* Models with weighted loss (set `job_config.training.token_weights` in the training config file)
+* Models with a fixed number of neurons *n* (set `job_config.training.n_fixed` in the training config file)
 
-The training configurations for these and various other models can be found in the [train_configs](train_configs) folder. These models can all be trained with FSDP2 only (although the code also supports tensor parallelism). The larger GPU memory on GH200 makes it feasible to train the models with up to 131072 token context length without TP (note that this is not possible on MI250X).
+A variety of training config files can be found in the [train_configs](train_configs) folder. The code currently supports FSDP and TP for distributed training. 
 
 ### Training data
 
