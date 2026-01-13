@@ -36,8 +36,8 @@ export GPUS_PER_NODE=4
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 export MASTER_PORT=3442
 
-CONFIG_FILE=${CONFIG_FILE:-"./train_configs/primate_2B_8k_n_fixed_256_tokenizer_1x15_32k.toml"}
+CONFIG_FILE=${CONFIG_FILE:-"./train_configs/primate_7B_8k_n_fixed_256_tokenizer_1x15_32k.toml"}
 
-srun torchrun --nnodes $SLURM_NNODES --nproc_per_node 4 --max_restarts 1 --node_rank $SLURM_NODEID --rdzv_id 101 --rdzv_backend c10d --rdzv_endpoint "$MASTER_ADDR:$MASTER_PORT" ./generate_tokenized.py --config ${CONFIG_FILE} --tokenizer_path "tokenizers/tokenizer_primate_1x15_32k.pkl" --ckpt "outputs/primate_2B_8k_n_fixed_256_tokenizer_1x15_32k/checkpoint/step-98800"
+srun torchrun --nnodes $SLURM_NNODES --nproc_per_node 4 --max_restarts 1 --node_rank $SLURM_NODEID --rdzv_id 101 --rdzv_backend c10d --rdzv_endpoint "$MASTER_ADDR:$MASTER_PORT" ./generate_tokenized.py --config ${CONFIG_FILE} --tokenizer_path "tokenizers/tokenizer_primate_1x15_32k.pkl" --ckpt "outputs/primate_7B_8k_n_fixed_256_tokenizer_1x15_32k/checkpoint/step-91800"
 
 echo "Done"

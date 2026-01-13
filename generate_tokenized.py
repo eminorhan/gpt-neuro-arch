@@ -292,8 +292,6 @@ def test_generate(
 
     t0 = time.monotonic()
     with torch.amp.autocast(device_type="cuda", dtype=torch.bfloat16):
-        # Pass dummy n_neurons if generate() doesn't strictly use it for logic other than logging/reshaping
-        # Since we are feeding tokens, we pass the tokens.
         responses = generate(
             model,
             input_ids,
@@ -408,14 +406,13 @@ if __name__ == "__main__":
     parser.add_argument("--ckpt", type=str, required=True, help="DCP checkpoint path")
     parser.add_argument("--tokenizer_path", type=str, required=True, help="Path to tokenizer pickle/json")
     parser.add_argument("--n_fixed_neurons", type=int, default=256, help="Standardize input to this many neurons")
-    
-    parser.add_argument("--temperature", type=float, default=1.1)
+    parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--top_k", type=int, help="Prune top_k")
     parser.add_argument("--seed", type=int)
-    parser.add_argument("--data_idx", type=int, default=19)
-    parser.add_argument("--ctx_t", type=int, default=30, help="Context time steps")
-    parser.add_argument("--gen_t", type=int, default=1, help="Generation time steps")
+    parser.add_argument("--data_idx", type=int, default=17)
+    parser.add_argument("--ctx_t", type=int, default=23, help="Context time steps")
+    parser.add_argument("--gen_t", type=int, default=8, help="Generation time steps")
     parser.add_argument("--out", action="store_true", default=False)
 
     args = parser.parse_args()
