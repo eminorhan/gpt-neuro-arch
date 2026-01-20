@@ -47,7 +47,7 @@ enable_checkpoint = true
 folder = "checkpoint"
 interval_type = "steps"
 interval = 1800
-model_weights_only = false
+model_weights_only = true
 export_dtype = "bfloat16"
 async_mode = "disabled"  # ["disabled", "async", "async_with_pinned_mem"]
 
