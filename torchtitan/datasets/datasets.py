@@ -14,11 +14,9 @@ from datasets.distributed import split_dataset_by_node
 # map from dataset name to a local directory, or a dataset repository on the HF hub
 _supported_datasets = {
     "rodent": "eminorhan/neural-pile-rodent",
+    "rodent-reordered": "eminorhan/neural-pile-rodent-reordered",
     "primate": "eminorhan/neural-pile-primate",
-    "willett": "eminorhan/willett",
-    "willett-churchland": ["eminorhan/willett", "eminorhan/churchland"],
-    "willett-churchland-makin": ["eminorhan/willett", "eminorhan/churchland", "eminorhan/makin"],
-    "card-willett-churchland-makin": ["eminorhan/card", "eminorhan/willett", "eminorhan/churchland", "eminorhan/makin"]
+    "primate-reordered": "eminorhan/neural-pile-primate-reordered",
 }
 
 # some utility functions for tokenization

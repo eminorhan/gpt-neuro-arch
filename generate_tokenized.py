@@ -410,7 +410,7 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=1)
     parser.add_argument("--top_k", type=int, help="Prune top_k")
     parser.add_argument("--seed", type=int)
-    parser.add_argument("--data_idx", type=int, default=25)
+    parser.add_argument("--data_idx", type=int, default=29)
     parser.add_argument("--ctx_t", type=int, default=23, help="Context time steps")
     parser.add_argument("--gen_t", type=int, default=8, help="Generation time steps")
     parser.add_argument("--out", action="store_true", default=False)
