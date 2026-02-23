@@ -1,8 +1,8 @@
 # torchtitan Config.toml
 
 [job]
-dump_folder = "./outputs/rodent_7B_8k_n_fixed_512_tokenizer_1x15_32k"
-description = "rodent_7B_8k_n_fixed_512_tokenizer_1x15_32k training"
+dump_folder = "./outputs/rodent_7B_8k_n_fixed_1024_tokenizer_1x15_32k"
+description = "rodent_7B_8k_n_fixed_1024_tokenizer_1x15_32k training"
 
 [profiling]
 enable_profiling = false
@@ -10,7 +10,7 @@ save_traces_folder = "profile_trace"
 profile_freq = 10
 
 [metrics]
-log_freq = 1800
+log_freq = 1870
 enable_tensorboard = false
 save_tb_folder = "tb"
 
@@ -37,7 +37,7 @@ data_parallel_shard_degree = -1
 tensor_parallel_degree = 1
 compile = false
 dataset = "rodent"
-n_fixed = 512
+n_fixed = 1024
 
 [experimental]
 pipeline_parallel_degree = 1
@@ -46,7 +46,7 @@ pipeline_parallel_degree = 1
 enable_checkpoint = true
 folder = "checkpoint"
 interval_type = "steps"
-interval = 1800
+interval = 1870
 model_weights_only = false
 export_dtype = "bfloat16"
 async_mode = "disabled"  # ["disabled", "async", "async_with_pinned_mem"]
