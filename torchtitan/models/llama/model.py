@@ -16,7 +16,7 @@ import torch.nn.functional as F
 from torch import nn
 from torchtitan.models.norms import build_norm
 
-import flash_attn_interface
+from flash_attn.cute import flash_attn_func
 
 
 @dataclass
@@ -189,7 +189,7 @@ class Attention(nn.Module):
         values = repeat_kv(xv, self.n_rep)  # (bs, seqlen, n_local_heads, head_dim)
 
         # FA-3
-        output = flash_attn_interface.flash_attn_func(xq, keys, values, causal=True)
+        output, _ = flash_attn_func(xq, keys, values, causal=True)
         output = output.contiguous().view(bs, seqlen, -1)
 
         return self.wo(output)

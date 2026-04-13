@@ -9,13 +9,13 @@
 #SBATCH --time=6:00:00
 #SBATCH --job-name=train_rodent_7B_8k_n_fixed_1024_tokenizer_1x15_32k
 #SBATCH --output=train_rodent_7B_8k_n_fixed_1024_tokenizer_1x15_32k_%A_%a.out
-#SBATCH --array=0-78%1
+#SBATCH --array=2-78%1
 
 # activate venv
 source /lustre/blizzard/stf218/scratch/emin/blizzardvenv/bin/activate
 
 # set misc env vars
-export LD_LIBRARY_PATH=/lustre/blizzard/stf218/scratch/emin/aws-ofi-nccl-1.17.2/lib:$LD_LIBRARY_PATH  # enable aws-ofi-nccl
+export LD_LIBRARY_PATH=/lustre/blizzard/stf218/scratch/emin/aws-ofi-nccl-1.19.0/lib:$LD_LIBRARY_PATH  # enable aws-ofi-nccl
 export NCCL_NET=ofi
 export FI_PROVIDER=cxi
 export LOGLEVEL=INFO

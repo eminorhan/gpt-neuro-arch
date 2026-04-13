@@ -38,9 +38,9 @@ python -m venv myvenv
 source myvenv/bin/activate
 ``` 
 
-* Install PyTorch stable built with CUDA 12.9 (my torch version is `2.9.1+cu129`):
+* Install PyTorch stable built with CUDA 13.0 (my torch version is `2.11.0+cu130`):
 ```bash
-pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu129
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
 ```
 
 * Install the following packages:
@@ -48,19 +48,17 @@ pip install --pre torch torchvision torchaudio --index-url https://download.pyto
 pip install datasets torchdata tomli tensorboard blobfile tabulate ninja wheel packaging
 ```
 
-* Install FlashAttention-3 for the Hopper architecture as described [here](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#flashattention-3-beta-release), basically:
+* Install [FlashAttention-4](https://github.com/dao-ailab/flash-attention?tab=readme-ov-file#flashattention-4-cutedsl) (with the `cu13` extra for optimal performance):
 ```bash
-git clone https://github.com/Dao-AILab/flash-attention.git
-cd flash-attention/hopper
-python setup.py install
+pip install --pre "flash-attn-4[cu13]"
 ```
 
-* Install the `aws-ofi-nccl` plugin, which will enable `nccl` to use `libfabric` (you need to change the paths below if you're not installing this on Arch):
+* Install the latest stable version of the `aws-ofi-nccl` plugin, which will enable `nccl` to use `libfabric` (you need to change the paths below if you're not installing this on Arch):
 ```bash
-wget https://github.com/aws/aws-ofi-nccl/releases/download/v1.17.2/aws-ofi-nccl-1.17.2.tar.gz
-tar -xzvf aws-ofi-nccl-1.17.2.tar.gz
-cd aws-ofi-nccl-1.17.2
-CC=gcc CXX=g++ ac_cv_header_limits_h=yes ./configure --with-libfabric=/opt/cray/libfabric/2.2.0rc1 --with-cuda=/opt/nvidia/hpc_sdk/Linux_aarch64/25.5/cuda/12.9 --enable-trace --prefix=/lustre/blizzard/stf218/scratch/emin/aws-ofi-nccl-1.17.2 --disable-tests
+wget https://github.com/aws/aws-ofi-nccl/releases/download/v1.19.0/aws-ofi-nccl-1.19.0.tar.gz
+tar -xzvf aws-ofi-nccl-1.19.0.tar.gz
+cd aws-ofi-nccl-1.19.0
+CC=gcc CXX=g++ ac_cv_header_limits_h=yes ./configure --with-libfabric=/opt/cray/libfabric/2.3.1 --with-cuda=/opt/nvidia/hpc_sdk/Linux_aarch64/25.9/cuda/13.0 --enable-trace --prefix=/lustre/blizzard/stf218/scratch/emin/aws-ofi-nccl-1.19.0 --disable-tests
 make
 make install
 ```
