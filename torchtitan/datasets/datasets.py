@@ -177,6 +177,11 @@ class HuggingFaceDataset(IterableDataset, Stateful):
             for sample in self._get_data_iter():
                 sample = np.array(sample['spike_counts'], dtype=np.uint8)
 
+                # Skip 1D or malformed samples entirely
+                if sample.ndim != 2:
+                    logger.warning(f"Skipping malformed sample with shape {sample.shape}")
+                    continue
+
                 # Optionally, standardize neuron number
                 if self.n_fixed is not None:
                     sample = standardize_neuron_dim(sample, self.n_fixed)
