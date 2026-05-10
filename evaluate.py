@@ -11,6 +11,7 @@ import os
 import sys
 import time
 from pathlib import Path
+import re
 
 import torch
 import torch.distributed.checkpoint as dcp
@@ -21,13 +22,14 @@ wd = Path(__file__).parent.resolve()
 sys.path.append(str(wd))
 
 from torchtitan import utils
-from torchtitan.checkpoint import ModelWrapper
+from torchtitan.checkpoint import CheckpointManager, TrainState
 from torchtitan.config_manager import JobConfig
 from torchtitan.datasets import build_data_loader
 from torchtitan.float8 import Float8Handler
 from torchtitan.logging import init_logger, logger
 from torchtitan.metrics import build_gpu_memory_monitor
 from torchtitan.models import model_name_to_cls, models_config
+from torchtitan.optimizer import build_lr_schedulers, build_optimizers
 from torchtitan.parallelisms import models_parallelize_fns, models_pipelining_fns, ParallelDims
 
 
@@ -140,25 +142,75 @@ def main(config_path: str, checkpoint_path: str, eval_steps: int):
         model.eval()
         model_parts = [model]
 
-    # load checkpoint
-    state_dict = {"model": ModelWrapper(model_parts)}
+    # use CheckpointManager to load the checkpoint
+    optimizers = build_optimizers(model_parts, job_config)
+    lr_schedulers = build_lr_schedulers(optimizers.optimizers, job_config)
+    train_state = TrainState()
 
-    logger.info(f"Loading checkpoint from: {checkpoint_path}")
-    dcp.load(state_dict, checkpoint_id=checkpoint_path)
+    checkpoint = CheckpointManager(
+        dataloader=data_loader,
+        model_parts=model_parts,
+        optimizers=optimizers.optimizers,
+        lr_schedulers=lr_schedulers.schedulers,
+        states={"train_state": train_state},
+        job_config=job_config,
+    )
+
+    # Override states to ONLY load the model. This prevents OOM by avoiding optimizer state loading,
+    # and prevents crashes when resharding states across different node counts.
+    checkpoint.states = {"model": checkpoint.states["model"]}
+
+    match = re.search(r"step-(\d+)", checkpoint_path)
+    step = int(match.group(1)) if match else -1
+    if step != -1:
+        checkpoint.folder = os.path.dirname(os.path.normpath(checkpoint_path))
+
+    logger.info(f"Loading checkpoint from: {checkpoint_path} (step {step})")
+    if not checkpoint.load(step=step):
+        logger.error(f"Failed to load checkpoint from {checkpoint_path}")
+        sys.exit(1)
     logger.info("Checkpoint loaded.")
 
     eval_context = get_eval_context(parallel_dims.loss_parallel_enabled, job_config.experimental.enable_compiled_autograd)
 
-    total_loss = 0.0
-    num_batches = 0
+    total_sum_loss = 0.0
+    total_valid_batches = 0.0
+    num_steps = 0
 
     logger.info("Evaluation starts.")
+    data_iterator = iter(data_loader)
     
+    last_batch = None
+
     with torch.no_grad():
-        for i, batch in enumerate(data_loader):
-            if eval_steps > 0 and i >= eval_steps:
+        while True:
+            if eval_steps > 0 and num_steps >= eval_steps:
                 break
             
+            try:
+                batch = next(data_iterator)
+                has_data_local = True
+                last_batch = batch
+            except StopIteration:
+                has_data_local = False
+                batch = last_batch
+
+            if batch is None:
+                # If a rank has no data from the start, create a dummy batch to avoid hanging the process group
+                dummy_input = torch.zeros(job_config.training.batch_size, job_config.training.seq_len, dtype=torch.long)
+                dummy_label = torch.zeros(job_config.training.batch_size, job_config.training.seq_len, dtype=torch.long)
+                batch = (dummy_input, dummy_label)
+                last_batch = batch
+
+            has_data_tensor = torch.tensor(1 if has_data_local else 0, device="cuda")
+
+            if parallel_dims.dp_enabled:
+                # Synchronize data availability. If ALL ranks are out of data, MAX makes it 0 for everyone
+                torch.distributed.all_reduce(has_data_tensor, op=torch.distributed.ReduceOp.MAX, group=dp_mesh.get_group("dp"))
+
+            if has_data_tensor.item() == 0:
+                break
+
             input_ids, labels = batch
             input_ids = input_ids.cuda()
             labels = labels.cuda()
@@ -184,24 +236,33 @@ def main(config_path: str, checkpoint_path: str, eval_steps: int):
                     del pred
 
             if is_last_stage:
+                local_loss = loss.item() if has_data_local else 0.0
+                local_count = 1.0 if has_data_local else 0.0
+
                 if parallel_dims.dp_enabled:
-                    global_avg_loss = utils.dist_mean(loss.item(), dp_mesh)
+                    loss_tensor = torch.tensor([local_loss, local_count], device="cuda")
+                    torch.distributed.all_reduce(loss_tensor, op=torch.distributed.ReduceOp.SUM, group=dp_mesh.get_group("dp"))
+                    step_loss_sum = loss_tensor[0].item()
+                    step_count = loss_tensor[1].item()
                 else:
-                    global_avg_loss = loss.item()
+                    step_loss_sum = local_loss
+                    step_count = local_count
 
-                total_loss += global_avg_loss
-                num_batches += 1
+                total_sum_loss += step_loss_sum
+                total_valid_batches += step_count
+                num_steps += 1
 
-                if i == 0 or (i + 1) % job_config.metrics.log_freq == 0:
-                    logger.info(f"Eval step {i + 1}: loss {global_avg_loss:.4f}")
+                if num_steps == 1 or num_steps % job_config.metrics.log_freq == 0:
+                    step_avg_loss = step_loss_sum / step_count if step_count > 0 else 0.0
+                    logger.info(f"Eval step {num_steps}: loss {step_avg_loss:.4f} (valid batches across DP: {int(step_count)})")
 
     if is_last_stage:
-        if num_batches > 0:
-            avg_eval_loss = total_loss / num_batches
+        if total_valid_batches > 0:
+            avg_eval_loss = total_sum_loss / total_valid_batches
         else:
             avg_eval_loss = float('nan')
 
-        logger.info(f"Evaluation completed. Average loss: {avg_eval_loss:.4f}")
+        logger.info(f"Evaluation completed. Average loss: {avg_eval_loss:.4f} over {int(total_valid_batches)} total valid batches.")
 
         if dp_rank == 0:
             eval_dir = os.path.join(job_config.job.dump_folder, "eval")
@@ -211,7 +272,8 @@ def main(config_path: str, checkpoint_path: str, eval_steps: int):
             result = {
                 "checkpoint": checkpoint_path,
                 "avg_cross_entropy_loss": avg_eval_loss,
-                "num_batches": num_batches,
+                "num_batches": int(total_valid_batches),
+                "num_steps": num_steps,
                 "seq_len": job_config.training.seq_len,
                 "batch_size": job_config.training.batch_size
             }

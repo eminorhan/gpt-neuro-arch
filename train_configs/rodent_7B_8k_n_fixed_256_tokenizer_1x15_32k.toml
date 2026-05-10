@@ -2,7 +2,7 @@
 
 [job]
 dump_folder = "./outputs/rodent_7B_8k_n_fixed_256_tokenizer_1x15_32k"
-description = "rodent_7B_8k_n_fixed_256_tokenizer_1x15_32k training"
+description = "rodent_7B_8k_n_fixed_256_tokenizer_1x15_32k"
 
 [profiling]
 enable_profiling = false
