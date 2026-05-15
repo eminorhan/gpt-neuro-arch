@@ -1,8 +1,8 @@
 # torchtitan Config.toml
 
 [job]
-dump_folder = "./outputs/primate_7B_8k_n_fixed_256_tokenizer_1x15_32k"
-description = "primate_7B_8k_n_fixed_256_tokenizer_1x15_32k training"
+dump_folder = "./outputs/primate_7B_8k_n_fixed_256_tokenizer_1x15_32k_nw4"
+description = "primate_7B_8k_n_fixed_256_tokenizer_1x15_32k_nw4 training"
 
 [profiling]
 enable_profiling = false
@@ -10,7 +10,7 @@ save_traces_folder = "profile_trace"
 profile_freq = 10
 
 [metrics]
-log_freq = 1900
+log_freq = 100
 enable_tensorboard = false
 save_tb_folder = "tb"
 

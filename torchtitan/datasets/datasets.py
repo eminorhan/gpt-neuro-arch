@@ -193,7 +193,7 @@ class HuggingFaceDataset(IterableDataset, Stateful):
                     
                     # 2. Tokenize (results in a flat list of ints)
                     token_sequence = [self.tokenizer["index_map"].get(patch.tobytes(), 0) for patch in patchified_sample]
-
+                    
                     # 3. Vectorized insertion of special tokens
                     # Convert to numpy to use reshaping tricks
                     token_arr = np.array(token_sequence)
@@ -441,4 +441,4 @@ def build_data_loader(
             split=split
         )
 
-    return DPAwareDataLoader(rank, dataset, batch_size=batch_size)
+    return DPAwareDataLoader(rank, dataset, batch_size=batch_size, num_workers=4)

@@ -100,7 +100,7 @@ def main(config_path: str, checkpoint_path: str, eval_steps: int):
         job_config.training.vocab_size,
         dp_degree,
         dp_rank,
-        infinite=False,
+        infinite=True,
         tokenizer_path=job_config.model.tokenizer_path,
         n_fixed=job_config.training.n_fixed,
         split="test"
@@ -252,9 +252,9 @@ def main(config_path: str, checkpoint_path: str, eval_steps: int):
                 total_valid_batches += step_count
                 num_steps += 1
 
-                if num_steps == 1 or num_steps % job_config.metrics.log_freq == 0:
-                    step_avg_loss = step_loss_sum / step_count if step_count > 0 else 0.0
-                    logger.info(f"Eval step {num_steps}: loss {step_avg_loss:.4f} (valid batches across DP: {int(step_count)})")
+                # if num_steps == 1 or num_steps % job_config.metrics.log_freq == 0:
+                step_avg_loss = step_loss_sum / step_count if step_count > 0 else 0.0
+                logger.info(f"Eval step {num_steps}: loss {step_avg_loss:.4f} (valid batches across DP: {int(step_count)})")
 
     if is_last_stage:
         if total_valid_batches > 0:
@@ -285,7 +285,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate a pretrained checkpoint")
     parser.add_argument("--config", type=str, required=True, help="TOML config file path")
     parser.add_argument("--ckpt", type=str, required=True, help="DCP checkpoint path to evaluate")
-    parser.add_argument("--eval_steps", type=int, default=-1, help="Max number of evaluation steps (optional)")
+    parser.add_argument("--eval_steps", type=int, default=500, help="Max number of evaluation steps (optional)")
     args = parser.parse_args()
 
     main(args.config, args.ckpt, args.eval_steps)
