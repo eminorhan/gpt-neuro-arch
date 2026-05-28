@@ -6,10 +6,10 @@
 #SBATCH --cpus-per-task=288
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
-#SBATCH --time=6:00:00
+#SBATCH --time=3:30:00
 #SBATCH --job-name=train_rodent_7B_8k_n_fixed_256_tokenizer_1x15_32k
 #SBATCH --output=train_rodent_7B_8k_n_fixed_256_tokenizer_1x15_32k_%A_%a.out
-#SBATCH --array=0-49%1
+#SBATCH --array=0-4%1
 
 # activate venv
 source /lustre/blizzard/stf218/scratch/emin/blizzardvenv/bin/activate
@@ -34,6 +34,6 @@ export MASTER_PORT=3442
 
 CONFIG_FILE=${CONFIG_FILE:-"./train_configs/rodent_7B_8k_n_fixed_256_tokenizer_1x15_32k.toml"}
 
-srun torchrun --nnodes $SLURM_NNODES --nproc_per_node 4 --max_restarts 1 --node_rank $SLURM_NODEID --rdzv_id 101 --rdzv_backend c10d --rdzv_endpoint "$MASTER_ADDR:$MASTER_PORT" ./train.py --job.config_file ${CONFIG_FILE}
+srun torchrun --nnodes $SLURM_NNODES --nproc_per_node $GPUS_PER_NODE --max_restarts 1 --node_rank $SLURM_NODEID --rdzv_id 101 --rdzv_backend c10d --rdzv_endpoint "$MASTER_ADDR:$MASTER_PORT" ./train.py --job.config_file ${CONFIG_FILE}
 
 echo "Done"

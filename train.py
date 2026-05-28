@@ -99,7 +99,9 @@ def main(job_config: JobConfig):
         dp_rank,
         infinite=True,
         tokenizer_path=job_config.model.tokenizer_path,
-        n_fixed=job_config.training.n_fixed
+        n_fixed=job_config.training.n_fixed,
+        split="train",
+        source_dataset=job_config.training.source_dataset
     )
 
     # build model (using meta init)

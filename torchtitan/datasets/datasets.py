@@ -139,7 +139,8 @@ class HuggingFaceDataset(IterableDataset, Stateful):
         infinite: bool = True,
         tokenizer_path: Optional[str] = None,
         n_fixed: Optional[int] = None,
-        split: str = "train"
+        split: str = "train",
+        source_dataset: str = "all"
     ) -> None:
         # allow user to pass in a (local or HF hub) path to use unsupported datasets
         if dataset_name not in _supported_datasets:
@@ -156,6 +157,9 @@ class HuggingFaceDataset(IterableDataset, Stateful):
             ds = concatenate_datasets([load_dataset(repo_name, split=split) for repo_name in dataset_path])
         else:
             ds = load_dataset(dataset_path, split=split)
+
+        if source_dataset != "all":
+            ds = ds.filter(lambda example: example["source_dataset"] == source_dataset)
 
         # NOTE: datasets are pre-shuffled
         self._data = split_dataset_by_node(ds, rank, world_size)
@@ -365,7 +369,6 @@ class DPAwareDataLoader(StatefulDataLoader, Stateful):
     """
     A wrapper around the StatefulDataLoader that ensures that the state is stored only once per DP rank.
     """
-
     def __init__(self, dp_rank: int, dataset: IterableDataset, batch_size: int):
         super().__init__(dataset, batch_size)
         self._dp_rank = dp_rank
@@ -397,7 +400,8 @@ def build_data_loader(
     infinite: bool = True,
     tokenizer_path: Optional[str] = None,
     n_fixed: Optional[int] = None,
-    split: str = "train"   
+    split: str = "train",
+    source_dataset: str = "all"
 ) -> DPAwareDataLoader:
     """
     Builds a data loader for distributed training.
@@ -438,7 +442,8 @@ def build_data_loader(
             infinite=infinite,
             tokenizer_path=tokenizer_path,
             n_fixed=n_fixed,
-            split=split
+            split=split,
+            source_dataset=source_dataset
         )
 
-    return DPAwareDataLoader(rank, dataset, batch_size=batch_size, num_workers=4)
+    return DPAwareDataLoader(rank, dataset, batch_size=batch_size)

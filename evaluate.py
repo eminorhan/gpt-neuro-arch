@@ -103,7 +103,8 @@ def main(config_path: str, checkpoint_path: str, eval_steps: int):
         infinite=True,
         tokenizer_path=job_config.model.tokenizer_path,
         n_fixed=job_config.training.n_fixed,
-        split="test"
+        split="test",
+        source_dataset=job_config.training.source_dataset
     )
 
     # build model (using meta init)
@@ -252,9 +253,9 @@ def main(config_path: str, checkpoint_path: str, eval_steps: int):
                 total_valid_batches += step_count
                 num_steps += 1
 
-                # if num_steps == 1 or num_steps % job_config.metrics.log_freq == 0:
-                step_avg_loss = step_loss_sum / step_count if step_count > 0 else 0.0
-                logger.info(f"Eval step {num_steps}: loss {step_avg_loss:.4f} (valid batches across DP: {int(step_count)})")
+                if num_steps == 1 or num_steps % job_config.metrics.log_freq == 0:
+                    step_avg_loss = step_loss_sum / step_count if step_count > 0 else 0.0
+                    logger.info(f"Eval step {num_steps}: loss {step_avg_loss:.4f} (valid batches across DP: {int(step_count)})")
 
     if is_last_stage:
         if total_valid_batches > 0:

@@ -206,6 +206,9 @@ class JobConfig:
                 loaded from this path instead of downloaded.""",
         )
         self.parser.add_argument(
+            "--training.source_dataset", type=str, default="all", help="Filter ds to source_dataset."
+        )
+        self.parser.add_argument(
             "--training.batch_size", type=int, default=8, help="Batch size"
         )
         self.parser.add_argument(

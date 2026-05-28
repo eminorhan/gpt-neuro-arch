@@ -9,7 +9,7 @@
 #SBATCH --time=6:00:00
 #SBATCH --job-name=train_primate_7B_8k_n_fixed_256_tokenizer_1x15_32k
 #SBATCH --output=train_primate_7B_8k_n_fixed_256_tokenizer_1x15_32k_%A_%a.out
-#SBATCH --array=29-68%1
+#SBATCH --array=0-19%1
 
 # activate venv
 source /lustre/blizzard/stf218/scratch/emin/blizzardvenv/bin/activate
@@ -19,12 +19,8 @@ export LD_LIBRARY_PATH=/lustre/blizzard/stf218/scratch/emin/aws-ofi-nccl-1.19.0/
 export NCCL_NET=ofi
 export FI_PROVIDER=cxi
 export LOGLEVEL=INFO
-export OMP_NUM_THREADS=1
 export NCCL_SOCKET_IFNAME=hsn0,hsn1,hsn2,hsn3
 export GLOO_SOCKET_IFNAME=hsn0,hsn1,hsn2,hsn3
-export NCCL_NET_GDR_LEVEL=3   # can improve performance, but remove this setting if you encounter a hang/crash.
-export NCCL_CROSS_NIC=1       # on large systems, this nccl setting has been found to improve performance
-export PYTORCH_CUDA_ALLOC_CONF="expandable_segments:True"
 export HF_HOME="/lustre/blizzard/stf218/scratch/emin/huggingface"
 export HF_DATASETS_CACHE="/lustre/blizzard/stf218/scratch/emin/huggingface"
 export TRITON_CACHE_DIR="/lustre/blizzard/stf218/scratch/emin/triton"
