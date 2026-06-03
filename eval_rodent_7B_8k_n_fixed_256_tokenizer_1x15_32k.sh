@@ -6,10 +6,10 @@
 #SBATCH --cpus-per-task=288
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
-#SBATCH --time=1:00:00
+#SBATCH --time=6:00:00
 #SBATCH --job-name=eval_rodent_7B_8k_n_fixed_256_tokenizer_1x15_32k
 #SBATCH --output=eval_rodent_7B_8k_n_fixed_256_tokenizer_1x15_32k_%A_%a.out
-#SBATCH --array=0-49  # TODO: remember to update with number of checkpoints 
+#SBATCH --array=0-29  # TODO: remember to update with number of checkpoints 
 
 # activate venv
 source /lustre/blizzard/stf218/scratch/emin/blizzardvenv/bin/activate

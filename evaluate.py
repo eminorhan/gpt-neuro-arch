@@ -286,7 +286,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate a pretrained checkpoint")
     parser.add_argument("--config", type=str, required=True, help="TOML config file path")
     parser.add_argument("--ckpt", type=str, required=True, help="DCP checkpoint path to evaluate")
-    parser.add_argument("--eval_steps", type=int, default=500, help="Max number of evaluation steps (optional)")
+    parser.add_argument("--eval_steps", type=int, default=1000, help="Max number of evaluation steps (optional)")
     args = parser.parse_args()
 
     main(args.config, args.ckpt, args.eval_steps)

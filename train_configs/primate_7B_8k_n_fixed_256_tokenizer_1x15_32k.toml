@@ -1,5 +1,3 @@
-# torchtitan Config.toml
-
 [job]
 dump_folder = "./outputs/primate_7B_8k_n_fixed_256_tokenizer_1x15_32k"
 description = "primate_7B_8k_n_fixed_256_tokenizer_1x15_32k training"
@@ -26,7 +24,7 @@ name = "AdamW"
 lr = 3e-4
 
 [training]
-batch_size = 8
+batch_size = 16
 seq_len = 8192
 vocab_size = 32000
 warmup_steps = 1000  # lr scheduler warm up
