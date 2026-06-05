@@ -151,7 +151,7 @@ class HuggingFaceDataset(IterableDataset, Stateful):
 
         if not dataset_path:
             dataset_path = _supported_datasets[dataset_name]
-        logger.info(f"Preparing {dataset_name} dataset ({split} split) from {dataset_path}")
+        logger.info(f"Preparing {dataset_name} dataset ({split} split) from {dataset_path}; filtering: {source_dataset}")
 
         if isinstance(dataset_path, list):
             ds = concatenate_datasets([load_dataset(repo_name, split=split) for repo_name in dataset_path])

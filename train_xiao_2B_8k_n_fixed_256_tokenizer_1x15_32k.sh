@@ -2,14 +2,14 @@
 
 #SBATCH --account=stf218-arch
 #SBATCH --partition=batch
-#SBATCH --nodes=2
+#SBATCH --nodes=8
 #SBATCH --cpus-per-task=288
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --time=6:00:00
-#SBATCH --job-name=eval_rodent_2B_8k_n_fixed_256_tokenizer_1x15_32k
-#SBATCH --output=eval_rodent_2B_8k_n_fixed_256_tokenizer_1x15_32k_%A_%a.out
-#SBATCH --array=19  # TODO: remember to update with number of checkpoints 
+#SBATCH --job-name=train_xiao_2B_8k_n_fixed_256_tokenizer_1x15_32k
+#SBATCH --output=train_xiao_2B_8k_n_fixed_256_tokenizer_1x15_32k_%A_%a.out
+#SBATCH --array=0-1%1
 
 # activate venv
 source /lustre/blizzard/stf218/scratch/emin/blizzardvenv/bin/activate
@@ -32,19 +32,8 @@ export GPUS_PER_NODE=4
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 export MASTER_PORT=3442
 
-CONFIG_FILE=${CONFIG_FILE:-"./train_configs/rodent_2B_8k_n_fixed_256_tokenizer_1x15_32k.toml"}
-CHECKPOINT_DIR="./outputs/rodent_2B_8k_n_fixed_256_tokenizer_1x15_32k/checkpoint"
+CONFIG_FILE=${CONFIG_FILE:-"./train_configs/xiao_2B_8k_n_fixed_256_tokenizer_1x15_32k.toml"}
 
-# Assign a specific checkpoint to this array job
-CHECKPOINTS=($(ls -d ${CHECKPOINT_DIR}/step-* | sort -V))
-CKPT_PATH=${CHECKPOINTS[$SLURM_ARRAY_TASK_ID]}
-
-if [ -z "$CKPT_PATH" ]; then
-    echo "No checkpoint found for array task ID $SLURM_ARRAY_TASK_ID. Double check your --array bounds."
-    exit 1
-fi
-
-echo "Evaluating checkpoint: $CKPT_PATH"
-srun torchrun --nnodes $SLURM_NNODES --nproc_per_node 4 --max_restarts 1 --node_rank $SLURM_NODEID --rdzv_id 101 --rdzv_backend c10d --rdzv_endpoint "$MASTER_ADDR:$MASTER_PORT" ./evaluate.py --config ${CONFIG_FILE} --ckpt ${CKPT_PATH}
+srun torchrun --nnodes $SLURM_NNODES --nproc_per_node $GPUS_PER_NODE --max_restarts 1 --node_rank $SLURM_NODEID --rdzv_id 101 --rdzv_backend c10d --rdzv_endpoint "$MASTER_ADDR:$MASTER_PORT" ./train.py --job.config_file ${CONFIG_FILE}
 
 echo "Done"
