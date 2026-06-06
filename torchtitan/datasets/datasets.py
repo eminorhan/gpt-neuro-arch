@@ -153,13 +153,26 @@ class HuggingFaceDataset(IterableDataset, Stateful):
             dataset_path = _supported_datasets[dataset_name]
         logger.info(f"Preparing {dataset_name} dataset ({split} split) from {dataset_path}; filtering: {source_dataset}")
 
+        if rank != 0:
+            logger.info(f"Rank {rank} waiting for Rank 0 to build the dataset cache...")
+            torch.distributed.barrier()
+
         if isinstance(dataset_path, list):
             ds = concatenate_datasets([load_dataset(repo_name, split=split) for repo_name in dataset_path])
         else:
             ds = load_dataset(dataset_path, split=split)
 
         if source_dataset != "all":
-            ds = ds.filter(lambda example: example["source_dataset"] == source_dataset)
+            ds = ds.filter(
+                lambda batch: [src == source_dataset for src in batch["source_dataset"]],
+                batched=True,
+                batch_size=128,
+                num_proc=64
+            )
+
+        if rank == 0:
+            logger.info("Rank 0 finished building cache. Releasing barrier.")
+            torch.distributed.barrier()
 
         # NOTE: datasets are pre-shuffled
         self._data = split_dataset_by_node(ds, rank, world_size)
