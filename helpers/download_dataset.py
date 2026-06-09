@@ -5,7 +5,7 @@ import torch
 
 # ds = load_dataset("eminorhan/neural-pile-primate-reordered", download_mode='force_redownload')
 # ds = load_dataset("eminorhan/neural-pile-rodent-reordered", download_mode='force_redownload')
-ds = load_dataset("eminorhan/neural-pile-primate", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
+ds = load_dataset("eminorhan/neural-pile-primate", download_mode='force_redownload', storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
 # ds = load_dataset("eminorhan/neural-pile-rodent", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
 # ds = load_dataset("eminorhan/xiao", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})
 # ds = load_dataset("eminorhan/willett", storage_options={'client_kwargs': {'timeout': aiohttp.ClientTimeout(total=3600)}})

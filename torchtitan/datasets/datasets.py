@@ -174,6 +174,17 @@ class HuggingFaceDataset(IterableDataset, Stateful):
             logger.info("Rank 0 finished building cache. Releasing barrier.")
             torch.distributed.barrier()
 
+        # Prevent ZeroDivisionError and silent hangs if the dataset is entirely empty
+        if len(ds) == 0:
+            raise ValueError(f"The dataset '{dataset_name}' is empty after loading/filtering. Cannot proceed.")
+
+        # Gracefully handle the edge case where there are fewer rows than the world_size
+        if len(ds) < world_size:
+            logger.info(f"Dataset has fewer rows ({len(ds)}) than world_size ({world_size}). Repeating the dataset to prevent empty shards on some ranks.")
+            # Calculate the ceiling of world_size / len(ds) using integer math
+            num_repeats = (world_size + len(ds) - 1) // len(ds)
+            ds = concatenate_datasets([ds] * num_repeats)
+
         # NOTE: datasets are pre-shuffled
         self._data = split_dataset_by_node(ds, rank, world_size)
         self.dataset_name = dataset_name

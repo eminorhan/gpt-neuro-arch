@@ -1,0 +1,47 @@
+#!/bin/bash
+
+#SBATCH --account=stf218-arch
+#SBATCH --partition=batch
+#SBATCH --nodes=2
+#SBATCH --cpus-per-task=288
+#SBATCH --ntasks-per-node=1
+#SBATCH --gpus-per-node=4
+#SBATCH --time=6:00:00
+#SBATCH --job-name=eval_card_2B_8k_n_fixed_256_tokenizer_1x15_16k
+#SBATCH --output=eval_card_2B_8k_n_fixed_256_tokenizer_1x15_16k_%A_%a.out
+#SBATCH --array=0-9  # TODO: remember to update with number of checkpoints 
+
+# activate venv
+source /lustre/blizzard/stf218/scratch/emin/blizzardvenv/bin/activate
+
+# set misc env vars
+export LOGLEVEL=INFO
+export NCCL_SOCKET_IFNAME=hsn0,hsn1,hsn2,hsn3
+export GLOO_SOCKET_IFNAME=hsn0,hsn1,hsn2,hsn3
+export HF_HOME="/lustre/blizzard/stf218/scratch/emin/huggingface"
+export HF_DATASETS_CACHE="/lustre/blizzard/stf218/scratch/emin/huggingface"
+export TRITON_CACHE_DIR="/lustre/blizzard/stf218/scratch/emin/triton"
+export PYTORCH_KERNEL_CACHE_PATH="/lustre/blizzard/stf218/scratch/emin/pytorch_kernel_cache"
+export HF_HUB_OFFLINE=1
+export GPUS_PER_NODE=4
+
+# set network
+export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
+export MASTER_PORT=3442
+
+CONFIG_FILE=${CONFIG_FILE:-"./train_configs/individual_primate/card_2B_8k_n_fixed_256_tokenizer_1x15_32k.toml"}
+CHECKPOINT_DIR="./outputs/card_2B_8k_n_fixed_256_tokenizer_1x15_32k/checkpoint"
+
+# Assign a specific checkpoint to this array job
+CHECKPOINTS=($(ls -d ${CHECKPOINT_DIR}/step-* | sort -V))
+CKPT_PATH=${CHECKPOINTS[$SLURM_ARRAY_TASK_ID]}
+
+if [ -z "$CKPT_PATH" ]; then
+    echo "No checkpoint found for array task ID $SLURM_ARRAY_TASK_ID. Double check your --array bounds."
+    exit 1
+fi
+
+echo "Evaluating checkpoint: $CKPT_PATH"
+srun torchrun --nnodes $SLURM_NNODES --nproc_per_node 4 --max_restarts 1 --node_rank $SLURM_NODEID --rdzv_id 101 --rdzv_backend c10d --rdzv_endpoint "$MASTER_ADDR:$MASTER_PORT" ./evaluate.py --config ${CONFIG_FILE} --ckpt ${CKPT_PATH} --eval_steps 100
+
+echo "Done"
