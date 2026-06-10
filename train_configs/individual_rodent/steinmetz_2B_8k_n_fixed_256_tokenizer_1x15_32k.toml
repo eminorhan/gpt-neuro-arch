@@ -1,5 +1,3 @@
-# torchtitan Config.toml
-
 [job]
 dump_folder = "./outputs/steinmetz_2B_8k_n_fixed_256_tokenizer_1x15_32k"
 description = "steinmetz_2B_8k_n_fixed_256_tokenizer_1x15_32k training"
@@ -19,7 +17,7 @@ name = "llama3"
 flavor = "2B"  # 7B / 2B / 870M / 250M
 norm_type = "rmsnorm"  # layernorm / np_layernorm / rmsnorm / fused_rmsnorm
 rope_theta = 10000
-tokenizer_path = "./tokenizers/tokenizer_primate_1x15_32k.pkl"
+tokenizer_path = "./tokenizers/tokenizer_rodent_1x15_32k.pkl"
 
 [optimizer]
 name = "AdamW"

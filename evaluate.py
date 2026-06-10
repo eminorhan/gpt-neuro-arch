@@ -47,7 +47,7 @@ def get_eval_context(enable_loss_parallel: bool, enable_compiled_autograd: bool)
 
 
 @record
-def main(config_path: str, checkpoint_path: str, eval_steps: int):
+def main(config_path: str, checkpoint_path: str, eval_dirname: str, eval_steps: int):
     job_config = JobConfig()
     job_config.parse_args([f"--job.config_file={config_path}"])
     job_config._validate_config()
@@ -286,10 +286,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate a pretrained checkpoint")
     parser.add_argument("--config", type=str, required=True, help="TOML config file path")
     parser.add_argument("--ckpt", type=str, required=True, help="DCP checkpoint path to evaluate")
+    parser.add_argument("--eval_dirname", type=str, default="eval", help="Eval directory name (relative to dump_folder)")
     parser.add_argument("--eval_steps", type=int, default=1000, help="Max number of evaluation steps (optional)")
     args = parser.parse_args()
 
-    main(args.config, args.ckpt, args.eval_steps)
+    main(args.config, args.ckpt, args.eval_dirname, args.eval_steps)
 
     if torch.distributed.is_initialized():
         torch.distributed.destroy_process_group()
