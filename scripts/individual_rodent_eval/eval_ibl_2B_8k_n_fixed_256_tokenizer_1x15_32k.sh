@@ -7,8 +7,8 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --time=6:00:00
-#SBATCH --job-name=eval_ibl_2B_8k_n_fixed_256_tokenizer_1x15_16k
-#SBATCH --output=eval_ibl_2B_8k_n_fixed_256_tokenizer_1x15_16k_%A_%a.out
+#SBATCH --job-name=eval_ibl_2B_8k_n_fixed_256_tokenizer_1x15_32k
+#SBATCH --output=eval_ibl_2B_8k_n_fixed_256_tokenizer_1x15_32k_%A_%a.out
 #SBATCH --array=0-9  # TODO: remember to update with number of checkpoints 
 
 # activate venv
