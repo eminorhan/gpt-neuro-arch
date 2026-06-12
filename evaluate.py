@@ -276,7 +276,7 @@ def main(config_path: str, checkpoint_path: str, eval_dirname: str, eval_steps: 
         logger.info(f"Evaluation completed. Average loss: {avg_eval_loss:.4f} over {int(total_valid_batches)} total valid batches.")
 
         if dp_rank == 0:
-            eval_dir = os.path.join(job_config.job.dump_folder, "eval")
+            eval_dir = os.path.join(job_config.job.dump_folder, eval_dirname)
             os.makedirs(eval_dir, exist_ok=True)
             ckpt_name = os.path.basename(os.path.normpath(checkpoint_path))
             result_file = os.path.join(eval_dir, f"eval_result_{ckpt_name}.json")
