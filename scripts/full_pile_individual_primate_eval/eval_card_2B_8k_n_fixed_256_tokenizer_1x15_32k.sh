@@ -9,12 +9,15 @@
 #SBATCH --time=6:00:00
 #SBATCH --job-name=eval_full_pile_card_2B_8k_n_fixed_256_tokenizer_1x15_32k
 #SBATCH --output=eval_full_pile_card_2B_8k_n_fixed_256_tokenizer_1x15_32k_%A_%a.out
-#SBATCH --array=0  # TODO: remember to update with number of checkpoints 
+#SBATCH --array=0-19  # TODO: remember to update with number of checkpoints 
 
 # activate venv
 source /lustre/blizzard/stf218/scratch/emin/blizzardvenv/bin/activate
 
 # set misc env vars
+export LD_LIBRARY_PATH=/lustre/blizzard/stf218/scratch/emin/aws-ofi-nccl-1.19.0/lib:$LD_LIBRARY_PATH  # enable aws-ofi-nccl
+export NCCL_NET=ofi
+export FI_PROVIDER=cxi
 export LOGLEVEL=INFO
 export NCCL_SOCKET_IFNAME=hsn0,hsn1,hsn2,hsn3
 export GLOO_SOCKET_IFNAME=hsn0,hsn1,hsn2,hsn3

@@ -7,9 +7,9 @@
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
 #SBATCH --time=6:00:00
-#SBATCH --job-name=eval_full_pile_chen_2B_8k_n_fixed_256_tokenizer_1x15_16k
-#SBATCH --output=eval_full_pile_chen_2B_8k_n_fixed_256_tokenizer_1x15_16k_%A_%a.out
-#SBATCH --array=0-19  # TODO: remember to update with number of checkpoints 
+#SBATCH --job-name=eval_full_pile_oddball_2B_8k_n_fixed_256_tokenizer_1x15_32k
+#SBATCH --output=eval_full_pile_oddball_2B_8k_n_fixed_256_tokenizer_1x15_32k_%A_%a.out
+#SBATCH --array=0-29  # TODO: remember to update with number of checkpoints 
 
 # activate venv
 source /lustre/blizzard/stf218/scratch/emin/blizzardvenv/bin/activate
@@ -32,8 +32,8 @@ export GPUS_PER_NODE=4
 export MASTER_ADDR=$(scontrol show hostnames $SLURM_JOB_NODELIST | head -n 1)
 export MASTER_PORT=3442
 
-CONFIG_FILE=${CONFIG_FILE:-"./train_configs/full_pile/primate_2B_8k_n_fixed_256_tokenizer_1x15_32k.toml"}
-CHECKPOINT_DIR="./outputs/primate_2B_8k_n_fixed_256_tokenizer_1x15_32k/checkpoint"
+CONFIG_FILE=${CONFIG_FILE:-"./train_configs/full_pile/rodent_2B_8k_n_fixed_256_tokenizer_1x15_32k.toml"}
+CHECKPOINT_DIR="./outputs/rodent_2B_8k_n_fixed_256_tokenizer_1x15_32k/checkpoint"
 
 # Assign a specific checkpoint to this array job
 CHECKPOINTS=($(ls -d ${CHECKPOINT_DIR}/step-* | sort -V))
@@ -45,6 +45,6 @@ if [ -z "$CKPT_PATH" ]; then
 fi
 
 echo "Evaluating checkpoint: $CKPT_PATH"
-srun torchrun --nnodes $SLURM_NNODES --nproc_per_node 4 --max_restarts 1 --node_rank $SLURM_NODEID --rdzv_id 101 --rdzv_backend c10d --rdzv_endpoint "$MASTER_ADDR:$MASTER_PORT" ./evaluate.py --config ${CONFIG_FILE} --ckpt ${CKPT_PATH} --eval_steps 100 --eval_dirname "eval-chen" --source_dataset "chen"
+srun torchrun --nnodes $SLURM_NNODES --nproc_per_node 4 --max_restarts 1 --node_rank $SLURM_NODEID --rdzv_id 101 --rdzv_backend c10d --rdzv_endpoint "$MASTER_ADDR:$MASTER_PORT" ./evaluate.py --config ${CONFIG_FILE} --ckpt ${CKPT_PATH} --eval_steps 1000 --eval_dirname "eval-oddball" --source_dataset "oddball"
 
 echo "Done"
