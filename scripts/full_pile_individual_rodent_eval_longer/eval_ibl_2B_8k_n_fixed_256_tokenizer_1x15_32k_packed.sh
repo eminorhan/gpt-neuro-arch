@@ -2,7 +2,7 @@
 
 #SBATCH --account=stf218-arch
 #SBATCH --partition=batch
-#SBATCH --nodes=38                  # Request all 38 nodes at once
+#SBATCH --nodes=30                  # Request all 30 nodes at once
 #SBATCH --cpus-per-task=288
 #SBATCH --ntasks-per-node=1
 #SBATCH --gpus-per-node=4
